@@ -1097,15 +1097,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         applyPowerSaving()
     }
 
-    /** #477: opt into the idle->LOW_POWER throttle at [pct] strap-battery %, 0 to disable. Re-applies
-     *  immediately rather than at next launch, and NoopPrefs clamps the value. No UI drives this yet -
-     *  it exists so validating #477 does not require a relaunch, and so a Test Centre or Settings
-     *  control can be added later without touching the BLE layer. */
-    fun setIdleThrottleBatteryPct(pct: Int) {
-        NoopPrefs.setIdleThrottleBatteryPct(appContext, pct)
-        applyPowerSaving()
-    }
-
     /** Flip the experimental LE 2M PHY preference (#533). Persists + pushes it to the client; it applies
      *  at the next offload burst, and switching it off releases an already-2M link back to 1M. */
     fun setFastLinkPhy(enabled: Boolean) {
