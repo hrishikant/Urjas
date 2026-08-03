@@ -1,0 +1,40 @@
+{
+  "name": "Ūrjas",
+  "identifier": "com.hrishikant.urjas.altsource",
+  "subtitle": "Ūrjas — an extended NOOP fork with advanced health features.",
+  "description": "AltStore source for Ūrjas, a personal fork of NOOP (by @ryanbr) with a refreshed UI and net-new analytics: DFA-α1 Personal Training Zones and an Overnight Breathing steadiness screen. Unsigned build; AltStore re-signs on-device with your free Apple ID.",
+  "iconURL": "https://raw.githubusercontent.com/hrishikant/Urjas/main/docs/assets/urjas-logo.png",
+  "website": "https://github.com/hrishikant/Urjas",
+  "tintColor": "1F6FEB",
+  "apps": [
+    {
+      "name": "Ūrjas",
+      "bundleIdentifier": "com.noopapp.noop",
+      "developerName": "hrishikant (fork of NOOP by @ryanbr)",
+      "subtitle": "WHOOP companion — recovery, sleep, strain & more.",
+      "localizedDescription": "Ūrjas is a personal, rebranded fork of NOOP (github.com/ryanbr/noop) by @ryanbr, with a refreshed UI and two net-new analytics on top of NOOP's full feature set:\n\n• Personal Training Zones (DFA-α1) — reads the fractal correlation of your beat-to-beat heartbeat during a workout and maps it to Easy / Moderate / Hard intensity, using the published α1≈0.75 (aerobic) and α1≈0.50 (anaerobic) thresholds. No lab test or measured max-HR needed.\n\n• Overnight Breathing — a relative blood-oxygen steadiness screen for each night, banded Steady / Some Variability / Frequent Dips. This is a wellness trend, NOT a medical test or an apnea diagnosis; if you have symptoms, see a doctor.\n\nUnsigned build — AltStore re-signs it on-device with your free Apple ID. All credit for the underlying app goes to @ryanbr and the NOOP project.",
+      "iconURL": "https://raw.githubusercontent.com/hrishikant/Urjas/main/docs/assets/urjas-logo.png",
+      "tintColor": "1F6FEB",
+      "category": "healthcare-fitness",
+      "screenshotURLs": [],
+      "versions": [
+        {
+          "version": "9.3.1",
+          "buildVersion": "213",
+          "date": "2026-08-03",
+          "localizedDescription": "Ūrjas rebrand of NOOP v9.3.1 plus two net-new features: DFA-α1 Personal Training Zones (on each workout) and the Overnight Breathing steadiness screen (on the Sleep screen). Existing NOOP Recovery Forecast and Fitness Age are retained.",
+          "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/testing-latest/Urjas-ios-unsigned-v9.3.1.ipa",
+          "size": 16822831,
+          "minOSVersion": "17.0"
+        }
+      ],
+      "version": "9.3.1",
+      "versionDate": "2026-08-03",
+      "versionDescription": "Ūrjas rebrand of NOOP v9.3.1 plus two net-new features: DFA-α1 Personal Training Zones and the Overnight Breathing steadiness screen.",
+      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/testing-latest/Urjas-ios-unsigned-v9.3.1.ipa",
+      "size": 16822831,
+      "minOSVersion": "17.0"
+    }
+  ],
+  "news": []
+}
