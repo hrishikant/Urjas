@@ -1,8 +1,8 @@
 # Fork-only: ONE on-demand testing build that publishes ALL platforms into ONE release.
 #
 # A `meta` job creates a single dated prerelease, then the android / macOS / iOS jobs each attach
-# their artifact to that SAME tag — so every release has NOOP-android + NOOP-android-debug (Android)
-# + NOOP-macos.zip + NOOP-ios-unsigned.ipa together, each stamped with the base app version.
+# their artifact to that SAME tag — so every release has Urjas-android + Urjas-android-debug (Android)
+# + Urjas-macos.zip + Urjas-ios-unsigned.ipa together, each stamped with the base app version.
 # Replaces the older split fork-testing-apk.yml + fork-testing-apple.yml.
 # Unsigned/debug-keyed, no secrets. Trigger from the Actions tab. (Built from noop-staging via --ref.)
 name: Testing build (fork)
@@ -39,13 +39,13 @@ jobs:
           # one stable URL, always the newest build, zero cleanup. (To KEEP a build, cut a one-off tag.)
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease --target "${{ github.sha }}" \
-            --title "NOOP Staging — base ${VER} · ${DATE} · ${SHA}" \
+            --title "Ūrjas — base ${VER} · ${DATE} · ${SHA}" \
             --notes "Rolling **latest** testing build — refreshed in place, so this tag is always the newest. NOOP main + ryanbr's open PRs + vetted community PRs, built with the **NOOP Staging** identity (installs **beside** the official app, separate data). Filenames carry the base app version (\`v${VER}\`).
 
-          - **Android (release)** — \`NOOP-android-v${VER}.apk\` — optimized, non-debuggable build; installs beside the official app. \`com.noop.whoop.staging\`.
-          - **Android (debug)** — \`NOOP-android-debug-v${VER}.apk\` — debuggable build. \`com.noop.whoop.debug\`.
-          - **macOS** — \`NOOP-macos-v${VER}.zip\` — unzip, then **right-click → Open** (ad-hoc signed, not notarized; Gatekeeper warns once). If it says *\"damaged\"*, run \`xattr -dr com.apple.quarantine /Applications/NOOP.app\`.
-          - **iOS** — \`NOOP-ios-unsigned-v${VER}.ipa\` — sideload via **AltStore / Sideloadly** (re-signs on-device); embedded watch app stripped, widget extension retained for Home/Lock-Screen widgets and Live Activities.
+          - **Android (release)** — \`Urjas-android-v${VER}.apk\` — optimized, non-debuggable build; installs beside the official app. \`com.noop.whoop.staging\`.
+          - **Android (debug)** — \`Urjas-android-debug-v${VER}.apk\` — debuggable build. \`com.noop.whoop.debug\`.
+          - **macOS** — \`Urjas-macos-v${VER}.zip\` — unzip, then **right-click → Open** (ad-hoc signed, not notarized; Gatekeeper warns once). If it says *\"damaged\"*, run \`xattr -dr com.apple.quarantine /Applications/NOOP.app\`.
+          - **iOS** — \`Urjas-ios-unsigned-v${VER}.ipa\` — sideload via **AltStore / Sideloadly** (re-signs on-device); embedded watch app stripped, widget extension retained for Home/Lock-Screen widgets and Live Activities.
 
           Base app version ${VER} · built ${DATE} · \`${SHA}\`."
           # Belt-and-braces: a rolling tag is deleted with --cleanup-tag and recreated seconds later, and
@@ -84,10 +84,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VER: ${{ needs.meta.outputs.ver }}
         run: |
-          cp app/build/outputs/apk/full/debug/*.apk "NOOP-android-debug-v${VER}.apk"
-          cp app/build/outputs/apk/full/release/*.apk "NOOP-android-v${VER}.apk"
+          cp app/build/outputs/apk/full/debug/*.apk "Urjas-android-debug-v${VER}.apk"
+          cp app/build/outputs/apk/full/release/*.apk "Urjas-android-v${VER}.apk"
           gh release upload "${{ needs.meta.outputs.tag }}" \
-            "NOOP-android-v${VER}.apk" "NOOP-android-debug-v${VER}.apk" \
+            "Urjas-android-v${VER}.apk" "Urjas-android-debug-v${VER}.apk" \
             --repo "$GITHUB_REPOSITORY" --clobber
 
   macos:
@@ -131,8 +131,8 @@ jobs:
           # future UPDATE still needs the re-toggle the in-app #429/#295 banner already describes.)
           codesign --force --deep --sign - "$APP"
           codesign -dvv "$APP" 2>&1 | grep -Ei 'identifier|signature|flags' || true
-          ditto -c -k --keepParent "$APP" "NOOP-macos-v${VER}.zip"
-          gh release upload "${{ needs.meta.outputs.tag }}" "NOOP-macos-v${VER}.zip" --repo "$GITHUB_REPOSITORY" --clobber
+          ditto -c -k --keepParent "$APP" "Urjas-macos-v${VER}.zip"
+          gh release upload "${{ needs.meta.outputs.tag }}" "Urjas-macos-v${VER}.zip" --repo "$GITHUB_REPOSITORY" --clobber
 
   ios:
     needs: meta
@@ -172,8 +172,8 @@ jobs:
           # provisions the shared container instead of treating both executables as entitlement-free.
           Tools/prepare-ios-sideload-app.sh "$APP"
           rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/
-          zip -qr "NOOP-ios-unsigned-v${VER}.ipa" Payload
-          gh release upload "${{ needs.meta.outputs.tag }}" "NOOP-ios-unsigned-v${VER}.ipa" --repo "$GITHUB_REPOSITORY" --clobber
+          zip -qr "Urjas-ios-unsigned-v${VER}.ipa" Payload
+          gh release upload "${{ needs.meta.outputs.tag }}" "Urjas-ios-unsigned-v${VER}.ipa" --repo "$GITHUB_REPOSITORY" --clobber
 
   # Fork-only housekeeping: the disposable `noop-staging` branch exists ONLY to feed this build. Once every
   # platform job has finished (pass OR fail — always()), delete it so GitHub's "Compare & pull request"

@@ -66,9 +66,9 @@ Pre-built apps you can run right now:
 
 | Platform | Build | Notes |
 |---|---|---|
-| **iOS** | Download the latest **`NOOP-ios-unsigned-vX.ipa`** from **[Ūrjas Releases](https://github.com/hrishikant/Urjas/releases)**, then sideload with **AltStore / SideStore / Sideloadly**. | The `.ipa` is unsigned; **you** sign it on your iPhone with your own free Apple ID (no App Store, no developer account). Re-signs every 7 days (AltStore/SideStore automates it). See [docs/IOS.md](docs/IOS.md). Or build from source in Xcode. |
-| **macOS** | `NOOP-macos-vX.zip` from **[Ūrjas Releases](https://github.com/hrishikant/Urjas/releases)** | Apple Silicon + Intel. Unzip, drag to Applications. Not notarized — see **First launch on macOS** below. |
-| **Android** | `NOOP-android-vX.apk` from **[Ūrjas Releases](https://github.com/hrishikant/Urjas/releases)** | The full app. `minSdk 26` (Android 8+). Sideload — enable "install unknown apps". Blocked by Play Protect? See **Installing on Android** below. |
+| **iOS** | Download the latest **`Urjas-ios-unsigned-vX.ipa`** from **[Ūrjas Releases](https://github.com/hrishikant/Urjas/releases)**, then sideload with **AltStore / SideStore / Sideloadly**. | The `.ipa` is unsigned; **you** sign it on your iPhone with your own free Apple ID (no App Store, no developer account). Re-signs every 7 days (AltStore/SideStore automates it). See [docs/IOS.md](docs/IOS.md). Or build from source in Xcode. |
+| **macOS** | `Urjas-macos-vX.zip` from **[Ūrjas Releases](https://github.com/hrishikant/Urjas/releases)** | Apple Silicon + Intel. Unzip, drag to Applications. Not notarized — see **First launch on macOS** below. |
+| **Android** | `Urjas-android-vX.apk` from **[Ūrjas Releases](https://github.com/hrishikant/Urjas/releases)** | The full app. `minSdk 26` (Android 8+). Sideload — enable "install unknown apps". Blocked by Play Protect? See **Installing on Android** below. |
 
 > Ūrjas builds are produced by the **Testing build (fork)** GitHub Action in this repo and published to
 > the rolling **[`testing-latest`](https://github.com/hrishikant/Urjas/releases/tag/testing-latest)**

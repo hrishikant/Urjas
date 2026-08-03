@@ -140,9 +140,9 @@ jobs:
             fi
             {
               printf '\n---\n\n**Downloads** — NOOP Staging identity, installs **beside** the official app (separate data):\n'
-              printf -- '- **Android** — `NOOP-android-v%s.apk` (`com.noop.whoop.staging`)\n' "$NEW"
-              printf -- '- **macOS** — `NOOP-macos-v%s.zip` (unzip, then right-click → Open)\n' "$NEW"
-              printf -- '- **iOS** — `NOOP-ios-unsigned-v%s.ipa` (AltStore / Sideloadly)\n' "$NEW"
+              printf -- '- **Android** — `Urjas-android-v%s.apk` (`com.noop.whoop.staging`)\n' "$NEW"
+              printf -- '- **macOS** — `Urjas-macos-v%s.zip` (unzip, then right-click → Open)\n' "$NEW"
+              printf -- '- **iOS** — `Urjas-ios-unsigned-v%s.ipa` (AltStore / Sideloadly)\n' "$NEW"
             } >> "$BODY"
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$(git rev-parse HEAD)" \
               --title "NOOP ${NEW}" --notes-file "$BODY"
@@ -174,8 +174,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VER: ${{ needs.bump.outputs.ver }}
         run: |
-          cp app/build/outputs/apk/full/release/*.apk "NOOP-android-v${VER}.apk"
-          gh release upload "${{ needs.bump.outputs.tag }}" "NOOP-android-v${VER}.apk" \
+          cp app/build/outputs/apk/full/release/*.apk "Urjas-android-v${VER}.apk"
+          gh release upload "${{ needs.bump.outputs.tag }}" "Urjas-android-v${VER}.apk" \
             --repo "$GITHUB_REPOSITORY" --clobber
 
   macos:
@@ -224,8 +224,8 @@ jobs:
           # future UPDATE still needs the re-toggle the in-app #429/#295 banner already describes.)
           codesign --force --deep --sign - "$APP"
           codesign -dvv "$APP" 2>&1 | grep -Ei 'identifier|signature|flags' || true
-          ditto -c -k --keepParent "$APP" "NOOP-macos-v${VER}.zip"
-          gh release upload "${{ needs.bump.outputs.tag }}" "NOOP-macos-v${VER}.zip" --repo "$GITHUB_REPOSITORY" --clobber
+          ditto -c -k --keepParent "$APP" "Urjas-macos-v${VER}.zip"
+          gh release upload "${{ needs.bump.outputs.tag }}" "Urjas-macos-v${VER}.zip" --repo "$GITHUB_REPOSITORY" --clobber
 
   ios:
     needs: bump
@@ -268,8 +268,8 @@ jobs:
           # provision and re-sign the App Group shared by the app and widget.
           Tools/prepare-ios-sideload-app.sh "$APP"
           rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/
-          zip -qr "NOOP-ios-unsigned-v${VER}.ipa" Payload
-          gh release upload "${{ needs.bump.outputs.tag }}" "NOOP-ios-unsigned-v${VER}.ipa" --repo "$GITHUB_REPOSITORY" --clobber
+          zip -qr "Urjas-ios-unsigned-v${VER}.ipa" Payload
+          gh release upload "${{ needs.bump.outputs.tag }}" "Urjas-ios-unsigned-v${VER}.ipa" --repo "$GITHUB_REPOSITORY" --clobber
 
   # Prepend this release to the AltStore / SideStore source manifest — the one AltStore reads from
   # raw.githubusercontent.com/<repo>/main/altstore-source.json (docs/IOS.md) — so a sideload user is
@@ -293,7 +293,7 @@ jobs:
           if [ ! -f altstore-source.json ]; then
             echo "::warning::no altstore-source.json on main — skipping AltStore update."; exit 0
           fi
-          IPA="NOOP-ios-unsigned-v${VER}.ipa"
+          IPA="Urjas-ios-unsigned-v${VER}.ipa"
           # The freshly-uploaded IPA's byte size, straight off the release asset (the `ios` job just pushed it).
           SIZE=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
             --jq '.assets[] | select(.name=="'"$IPA"'") | .size' || true)
