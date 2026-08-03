@@ -291,6 +291,11 @@ Windows are taken relative to your latest recorded day and auto-widen on sparse 
   icons.
 - **All Sessions** — a uniform table: date/time, sport, duration, avg HR, kcal, distance, and a
   **source badge** (WHOOP or Apple) per row.
+- **Training Zone** *(Ūrjas addition)* — opening a session that recorded beat-to-beat R-R shows a
+  **Personal Training Zone** card: DFA-α1 (short-scale Detrended Fluctuation Analysis) of the
+  heartbeat spacing, mapped to **Easy / Moderate / Hard** via the published α1≈0.75 (aerobic) and
+  α1≈0.50 (anaerobic) thresholds. A guide from your own autonomic state — no lab test or measured
+  max-HR needed. Hidden when the strap did not stream enough clean R-R (honest, never fabricated).
 
 ---
 
