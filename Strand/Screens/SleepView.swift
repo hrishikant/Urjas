@@ -104,7 +104,9 @@ struct SleepView: View {
     /// Sleeping heart-rate for the displayed night (1-min buckets), for the WHOOP-style HR chart above
     /// the stage rows. Loaded once per night via `.task(id:)` on the stage card. (ryanAtriumAi #988)
     @State private var nightHR: [HRBucket] = []
-
+    /// Ūrjas: the relative overnight breathing-steadiness screen for the displayed night. nil until
+    /// loaded per night via `.task(id:)`; index stays nil when SpO₂ coverage was too low.
+    @State private var breathing: OvernightBreathing.Result? = nil
     /// The transient UNDO banner shown after a suppressing delete (#65). Non-nil for ~7 seconds: carries
     /// the snapshot needed to restore the deleted night into its ORIGINAL namespace and the window text
     /// for the message. A user-created/edited delete writes no tombstone but still offers undo (restore).
@@ -503,11 +505,13 @@ struct SleepView: View {
                 sleepWindowRow(model.night)
                 stageCard(model.night, intervals: model.intervals)
                 napSection(model.night)
+                breathingCard(model.night)
             } else if let night = navNight {
                 nightNavHeader(trailing: night.spanLabel)
                 sleepWindowRow(night)
                 stageCard(night, intervals: night.intervals)
                 napSection(night)
+                breathingCard(night)
             } else if let session = sessionRow(at: nightOffset) {
                 // Stage-less stub purely to reuse Night's date/time formatting.
                 let stub = Night(session: session, stages: Stages(awake: 0, light: 0, deep: 0, rem: 0),
@@ -669,6 +673,52 @@ struct SleepView: View {
     /// The stage-breakdown ChartCard for a decoded night: hypnogram when intervals
     /// reconstruct, else the proportional stage bar. Intervals are passed in so offset 0
     /// uses the memoized `model.intervals` rather than re-deriving them. (#160)
+    // MARK: - Overnight Breathing (Ūrjas)
+
+    /// Relative overnight breathing-steadiness card. Reads the night's SpO₂ off the repo and hides itself
+    /// entirely when coverage was too low (the engine returned a nil index) — honest, never fabricated.
+    /// Explicitly framed as a wellness trend, NOT a medical test (the strap exposes no calibrated SpO₂ %).
+    @ViewBuilder
+    private func breathingCard(_ night: Night) -> some View {
+        VStack(alignment: .leading, spacing: NoopMetrics.gap) {
+            if let r = breathing, let dph = r.relativeDipsPerHour, let band = r.steadiness {
+                SectionHeader("Overnight Breathing", overline: "Blood-oxygen steadiness",
+                              trailing: String(localized: "~\(String(format: "%.0f", dph))/hr"))
+                NoopCard(tint: breathingColor(band)) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(band.friendlyName)
+                            .font(StrandFont.number(26))
+                            .foregroundStyle(breathingColor(band))
+                        Text(band.caption)
+                            .font(StrandFont.subhead)
+                            .foregroundStyle(StrandPalette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Divider().overlay(StrandPalette.hairline)
+                        Text("A relative count of how often your blood-oxygen proxy dipped and recovered overnight, from the strap's raw red/infrared signal. Ūrjas cannot measure a calibrated oxygen percentage, so this is a wellness trend — not a medical test or an apnea diagnosis.")
+                            .font(StrandFont.footnote)
+                            .foregroundStyle(StrandPalette.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(String(localized: "Overnight breathing \(band.friendlyName), about \(String(format: "%.0f", dph)) relative dips per hour. \(band.caption)"))
+            }
+        }
+        // Per-night load, same `.task(id:)` pattern as the sleeping-HR chart.
+        .task(id: night.session.startTs) {
+            breathing = await repo.nightlyBreathing(from: night.session.startTs,
+                                                    to: night.session.endTs)
+        }
+    }
+
+    private func breathingColor(_ band: OvernightBreathing.Steadiness) -> Color {
+        switch band {
+        case .steady: return StrandPalette.statusPositive
+        case .someVariability: return StrandPalette.statusWarning
+        case .frequentDips: return StrandPalette.metricRose
+        }
+    }
+
     @ViewBuilder
     private func stageCard(_ night: Night, intervals: [SleepInterval]) -> some View {
         let s = night.stages

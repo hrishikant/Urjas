@@ -992,7 +992,26 @@ final class Repository: ObservableObject {
         return byStart.values.sorted { $0.ts < $1.ts }
     }
 
-    /// The latest (greatest-ts) non-nil @63 activity class over `[from, to]`, read across the active strap +
+    /// Overnight breathing-steadiness screen for one night (Ūrjas): reads the night's raw SpO₂ (red/IR)
+    /// samples across the active strap + imported union and hands them to the pure `OvernightBreathing`
+    /// engine, which owns every coverage / artifact guard and computes only a RELATIVE, non-diagnostic
+    /// dip index (the strap exposes no calibrated SpO₂ %, so a clinical ODI is impossible — see the engine
+    /// header). Returns nil-index when coverage was too low. The heavy read + pure engine run off the main
+    /// actor; only the already-read Sendable samples cross in.
+    func nightlyBreathing(from: Int, to: Int) async -> OvernightBreathing.Result? {
+        guard to > from, let store = await ensureStore() else { return nil }
+        let ids = deviceId == canonicalDeviceId ? [deviceId] : importedReadIds
+        var samples: [SpO2Sample] = []
+        for id in ids {
+            let s = (try? await store.spo2Samples(deviceId: id, from: from, to: to,
+                                                  limit: 200_000)) ?? []
+            samples.append(contentsOf: s)
+        }
+        guard !samples.isEmpty else { return nil }
+        return await Task.detached(priority: .utility) {
+            OvernightBreathing.analyze(samples: samples)
+        }.value
+    }
     /// canonical UNION (`importedReadIds`), for the Steps tile icon (#316 / @63). A re-added strap banks its
     /// LIVE step samples (which carry `activityClass`) under its OWN fresh id via the Collector, exactly like
     /// HR, so a read pinned to the canonical "my-whoop" would return nothing and the tile icon would vanish for

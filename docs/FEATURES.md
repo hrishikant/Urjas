@@ -257,6 +257,11 @@ just the most recent (step through earlier nights to compare):
 - **Stages vs typical** — Deep / REM / Light as horizontal bars, last-night minutes with a marker
   at your personal mean, so highs and lows pop.
 - **Asleep duration** — a trailing-30-night hours trend with avg / min / max.
+- **Overnight Breathing** *(Ūrjas addition)* — a **relative blood-oxygen steadiness** card for the
+  displayed night: how often the strap's raw red/infrared (SpO₂ proxy) signal dipped and recovered,
+  banded as **Steady / Some Variability / Frequent Dips**. Because the strap exposes no *calibrated*
+  oxygen percentage, this is a relative wellness trend — explicitly **not** a clinical ODI or an apnea
+  diagnosis, and it points anyone with symptoms to a doctor. Hidden when SpO₂ coverage was too low.
 
 If no sleep sessions are imported, NOOP points you to Data Sources.
 
