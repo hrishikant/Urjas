@@ -1,12 +1,20 @@
 <p align="center">
-  <img src="docs/assets/logo-v3.png" alt="NOOP" width="72">
+  <img src="docs/assets/urjas-logo.png" alt="Ūrjas" width="72">
 </p>
 
-<h1 align="center">NOOP</h1>
+<h1 align="center">Ūrjas</h1>
 
-<p align="center"><b>Your strap. Your data. Your machine. Offline, on-device, no cloud.</b></p>
+<p align="center"><b>Your strap. Your data. Your device. Offline, on-device, no cloud.</b></p>
 
-<p align="center"><sub>Now in the all-new <b>Liquid Metal</b> design: one living look across iPhone, Android and Mac.</sub></p>
+<p align="center"><sub><b>Ūrjas</b> (Sanskrit ऊर्जस् — “energy, vitality”) is a rebranded, extended fork of <a href="https://github.com/ryanbr/noop"><b>NOOP</b></a> by <a href="https://github.com/ryanbr">@ryanbr</a> — same offline, on-device architecture, with a refreshed identity and UX.</sub></p>
+
+> [!NOTE]
+> **Built on NOOP — full credit to the original author.** Ūrjas is a personal fork of
+> [**ryanbr/noop**](https://github.com/ryanbr/noop). The entire core app — the WHOOP BLE protocol,
+> on-device store, analytics and cross-platform apps — is the work of [**@ryanbr**](https://github.com/ryanbr)
+> and the NOOP community. Ūrjas sits *on top of* that work with a new name, icon and design direction.
+> Please star and support the upstream project. Distributed under the same
+> [PolyForm Noncommercial 1.0.0](LICENSE) license; see [ATTRIBUTION.md](ATTRIBUTION.md) and [NOTICE](NOTICE).
 
 <p align="center">
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS%20%C2%B7%20Android%20%C2%B7%20iOS-E8B84B?style=flat-square">
@@ -58,9 +66,13 @@ Pre-built apps you can run right now:
 
 | Platform | Build | Notes |
 |---|---|---|
-| **macOS** | `NOOP.app` (see [Releases](https://github.com/ryanbr/noop/releases)) or Homebrew: `brew tap noopapp/noop && brew trust noopapp/noop && brew install --cask noop` | Apple Silicon + Intel. Drag to Applications. Not notarized — see **First launch on macOS** below. The one-time `brew trust noopapp/noop` is needed on Homebrew 6.0+ (harmless on older versions) — see [Homebrew docs](docs/HOMEBREW.md). |
-| **Android** | `NOOP-full.apk` (see [Releases](https://github.com/ryanbr/noop/releases)) | The full app. `minSdk 26` (Android 8+). Sideload — enable "install unknown apps". Blocked by Play Protect? See **Installing on Android** below. |
-| **iOS** | **AltStore / SideStore source** (recommended — one-tap install + auto-updates): add `https://raw.githubusercontent.com/ryanbr/noop/main/altstore-source.json` as a source. Or a **direct** [`NOOP-vX-ios.ipa`](https://github.com/ryanbr/noop/releases) download. | The `.ipa` is unsigned; **you** sign it on your iPhone with your own free Apple ID (no App Store, no developer account — NOOP stays anonymous). Re-signs every 7 days (AltStore/SideStore automates it). See [docs/IOS.md](docs/IOS.md). Or build from source in Xcode. |
+| **iOS** | Download the latest **`NOOP-ios-unsigned-vX.ipa`** from **[Ūrjas Releases](https://github.com/hrishikant/noop/releases)**, then sideload with **AltStore / SideStore / Sideloadly**. | The `.ipa` is unsigned; **you** sign it on your iPhone with your own free Apple ID (no App Store, no developer account). Re-signs every 7 days (AltStore/SideStore automates it). See [docs/IOS.md](docs/IOS.md). Or build from source in Xcode. |
+| **macOS** | `NOOP-macos-vX.zip` from **[Ūrjas Releases](https://github.com/hrishikant/noop/releases)** | Apple Silicon + Intel. Unzip, drag to Applications. Not notarized — see **First launch on macOS** below. |
+| **Android** | `NOOP-android-vX.apk` from **[Ūrjas Releases](https://github.com/hrishikant/noop/releases)** | The full app. `minSdk 26` (Android 8+). Sideload — enable "install unknown apps". Blocked by Play Protect? See **Installing on Android** below. |
+
+> Ūrjas builds are produced by the **Testing build (fork)** GitHub Action in this repo and published to
+> the rolling **[`testing-latest`](https://github.com/hrishikant/noop/releases/tag/testing-latest)**
+> release. Prefer the official upstream apps? Get NOOP from **[ryanbr/noop releases](https://github.com/ryanbr/noop/releases)**.
 
 > **First launch on macOS.** NOOP is **not notarized** by Apple — notarization needs a paid Apple
 > Developer ID tied to a real identity, which doesn't fit an anonymous, free project. The app *is*
@@ -108,6 +120,23 @@ no WHOOP cloud.
 It is built on prior community interoperability work and exists for one
 reason: to let someone who owns a WHOOP strap read **their own biometric data**
 from **their own device**, on a machine **they** control.
+
+## What Ūrjas adds
+
+Ūrjas is my personal fork of NOOP. It keeps NOOP's full architecture and offline, on-device
+philosophy intact, and layers my own identity and direction on top:
+
+- **New brand & identity** — the *Ūrjas* name and a new gold-on-navy app icon (shipping now).
+- **Redesigned UX** — a refreshed, professional interface reworked as an expert UX pass over the
+  existing screens *(in progress; see the interactive design prototype)*.
+- **Extended, sensor-derived insights** — additional predictive/screening features designed on top of
+  the same WHOOP sensor data NOOP already decodes (recovery forecast, training-zone estimation,
+  overnight breathing screen, body-age trajectory, early-illness radar, and more) *(planned / being
+  ported from the design prototype — not yet in the native build)*.
+
+> Everything the core app does today is NOOP's work. The items marked *in progress* / *planned* are my
+> additions on top and will land incrementally. Nothing here is a medical device — see
+> [`DISCLAIMER.md`](DISCLAIMER.md).
 
 > **Not affiliated with WHOOP.** NOOP is an independent, unofficial
 > interoperability project. It is not affiliated with, endorsed by, or connected
