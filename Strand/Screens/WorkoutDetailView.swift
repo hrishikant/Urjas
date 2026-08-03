@@ -51,6 +51,10 @@ struct WorkoutDetailView: View {
     /// not intense enough or the strap did not record enough post-workout coverage.
     @State private var heartRateRecovery: HeartRateRecovery.Result?
 
+    /// DFA-α1 training-intensity zone over this session's beat-to-beat R-R (Ūrjas). nil when the strap
+    /// did not stream enough clean R-R during the effort — the card then stays hidden (honest).
+    @State private var dfaAlpha1: DFAAlpha1.Alpha1Result?
+
     /// The GPS route captured for this session on-device (#524), if any. Decoded from `RouteStore` by the
     /// row's natural key. nil = no route was recorded (honest — the map only shows when points exist).
     @State private var route: [RouteMath.LatLng] = []
@@ -80,6 +84,7 @@ struct WorkoutDetailView: View {
             hrCurveCard
             zonesCard
             heartRateRecoveryCard
+            dfaZoneCard
             if let strain = row.strain {
                 effortCard(strain: strain)
             }
@@ -130,6 +135,11 @@ struct WorkoutDetailView: View {
         let hrr = await repo.workoutHeartRateRecovery(
             from: row.startTs, to: row.endTs, maxHR: Double(profile.hrMax), source: row.source)
 
+        // DFA-α1 personal training zone over the session's R-R (Ūrjas). Reads at most the workout window;
+        // the pure engine refuses a value when the R-R was too sparse/noisy, so a strap that streamed no
+        // R-R simply hides the card.
+        let dfa = await repo.workoutDfaAlpha1(from: row.startTs, to: row.endTs, source: row.source)
+
         // Steps for an on-foot session (#398), computed at display time over the exact window so it
         // "fills in after sync": prefer the strap's own counter (MG/5.0) once it has offloaded the window,
         // else the phone pedometer (any strap, incl. WHOOP 4.0 / CSV-import). Never shown for non-foot
@@ -154,6 +164,7 @@ struct WorkoutDetailView: View {
             self.zoneMinutes = minutes
             self.zonesFromImport = fromImport
             self.heartRateRecovery = hrr
+            self.dfaAlpha1 = dfa
             self.steps = stepReadout
             self.loaded = true
         }
@@ -200,6 +211,62 @@ struct WorkoutDetailView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(value.map { String(localized: "Heart rate recovery at \(label), \($0) beats per minute") }
                             ?? String(localized: "Heart rate recovery at \(label), not available"))
+    }
+
+    // MARK: - Personal Training Zone (DFA-α1) — Ūrjas
+
+    /// The workout's autonomic training-intensity zone from DFA-α1 (see `DFAAlpha1`). Hidden entirely
+    /// when the strap did not stream enough clean R-R (the engine returned nil) — never a fabricated bar.
+    @ViewBuilder private var dfaZoneCard: some View {
+        if let result = dfaAlpha1, let a = result.alpha1, let zone = result.zone {
+            VStack(alignment: .leading, spacing: NoopMetrics.gap) {
+                SectionHeader("Training Zone", overline: "From your beat-to-beat rhythm",
+                              trailing: String(localized: "α1 \(String(format: "%.2f", a))"))
+                NoopCard(tint: dfaZoneColor(zone)) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(zone.friendlyName)
+                            .font(StrandFont.number(28))
+                            .foregroundStyle(dfaZoneColor(zone))
+                        // Three-segment easy / moderate / hard rail, active segment lit.
+                        HStack(spacing: 4) {
+                            ForEach(DFAAlpha1.Zone.allCases, id: \.self) { z in
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(z == zone ? dfaZoneColor(z) : StrandPalette.hairline)
+                                    .frame(height: 6)
+                                    .overlay(alignment: .bottomLeading) {
+                                        Text(z.friendlyName)
+                                            .font(StrandFont.footnote)
+                                            .foregroundStyle(z == zone ? StrandPalette.textSecondary
+                                                                       : StrandPalette.textTertiary)
+                                            .fixedSize()
+                                            .offset(y: 18)
+                                    }
+                            }
+                        }
+                        .padding(.bottom, 16)
+                        Text(zone.guidance)
+                            .font(StrandFont.subhead)
+                            .foregroundStyle(StrandPalette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Divider().overlay(StrandPalette.hairline)
+                        Text("Ūrjas reads the fractal correlation (DFA-α1) of your heartbeat spacing. It falls as intensity rises — above 0.75 is easy aerobic effort, below 0.50 is anaerobic. A guide from your own autonomic state, not a lab test.")
+                            .font(StrandFont.footnote)
+                            .foregroundStyle(StrandPalette.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(String(localized: "Training zone \(zone.friendlyName), alpha 1 \(String(format: "%.2f", a)). \(zone.guidance)"))
+        }
+    }
+
+    private func dfaZoneColor(_ zone: DFAAlpha1.Zone) -> Color {
+        switch zone {
+        case .easy: return StrandPalette.statusPositive
+        case .moderate: return StrandPalette.statusWarning
+        case .hard: return StrandPalette.metricRose
+        }
     }
 
     // MARK: - Header

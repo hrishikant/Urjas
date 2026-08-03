@@ -2677,6 +2677,33 @@ final class Repository: ObservableObject {
                                            maxHR: maxHR)
     }
 
+    /// DFA-α1 personal training-intensity zone for one workout (Ūrjas). Reads the beat-to-beat R-R
+    /// intervals recorded over the exact session window and hands them to the pure `DFAAlpha1` engine,
+    /// which owns every artifact / coverage guard. Returns nil when the window carried too few clean
+    /// beats or was too noisy (the strap did not stream enough R-R during the effort) — never a
+    /// fabricated value. See `DFAAlpha1` for the science and the 0.75 / 0.50 zone thresholds. This
+    /// reads the same resolved workout strap ids the HR curve, zones and HRR use, so a detected bout
+    /// reads its own strap rather than the day union.
+    func workoutDfaAlpha1(from: Int, to: Int, source: String = "") async -> DFAAlpha1.Alpha1Result? {
+        guard to > from, let store = await ensureStore() else { return nil }
+        let ids = Self.workoutHrDeviceIds(source: source, activeStrapId: deviceId,
+                                          importedIds: importedReadIds)
+        var rr: [RRInterval] = []
+        for id in ids {
+            let rows = (try? await store.rrIntervals(deviceId: id, from: from, to: to,
+                                                     limit: 200_000)) ?? []
+            rr.append(contentsOf: rows)
+        }
+        guard !rr.isEmpty else { return nil }
+        // The RMSSD-style read is ordered per id; unioning ids needs a defensive stable re-sort. The
+        // pure engine + the Double map run OFF the main actor (mirrors the HRV timeline branch): only
+        // the already-read Sendable `rr` rows cross in.
+        return await Task.detached(priority: .utility) {
+            let ordered = rr.sortedByTsStable().map { Double($0.rrMs) }
+            return DFAAlpha1.analyze(rrMs: ordered)
+        }.value
+    }
+
     /// Apple Health daily aggregates (steps/energy/vo2/hr).
     func appleDailyRows(days: Int = 4000) async -> [AppleDaily] {
         guard let store = await ensureStore() else { return [] }
