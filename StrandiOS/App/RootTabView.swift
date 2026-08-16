@@ -94,9 +94,9 @@ struct RootTabView: View {
             // cleanly in the gap between them — replaces the native tab bar: no overlap, no glow. The
             // native TabView still drives content + per-tab nav state; only its bar is hidden.
             TabView(selection: $selectedTab) {
-                tab(todayTabRoot, "Today", "square.grid.2x2", path: $tabPaths[0], scrollSignal: scrollTop[0]).tag(0)
-                tab(TrendsView(), "Trends", "chart.line.uptrend.xyaxis", path: $tabPaths[1], scrollSignal: scrollTop[1]).tag(1)
-                tab(SleepView(), "Sleep", "bed.double", path: $tabPaths[2], scrollSignal: scrollTop[2]).tag(2)
+                tab(todayTabRoot, "Home", "house.fill", path: $tabPaths[0], scrollSignal: scrollTop[0]).tag(0)
+                tab(HealthView(), "Health", "heart.fill", path: $tabPaths[1], scrollSignal: scrollTop[1]).tag(1)
+                tab(SleepView(), "Sleep", "bed.double.fill", path: $tabPaths[2], scrollSignal: scrollTop[2]).tag(2)
                 moreTab(path: $tabPaths[3], scrollSignal: scrollTop[3]).tag(3)
             }
             .tint(StrandPalette.accent)
@@ -175,8 +175,9 @@ struct RootTabView: View {
                 routedPillar = dest
                 router.requestedDestination = nil
             case .trends:
-                // Trends is a primary tab on iPhone (not a pillar sheet) — switch to it.
-                withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.24)) { selectedTab = 1 }
+                // Trends moved off the bottom bar (now Home/Health/Sleep/More) — present it in its
+                // own sheet via the shared pillar host, which already renders TrendsView.
+                routedPillar = dest
                 router.requestedDestination = nil
             case .activeWorkout:
                 // The Today active-workout indicator opens Live through the quick-action Live sheet; once
@@ -356,6 +357,7 @@ struct RootTabView: View {
                            onRefresh: { await repo.refresh() },
                            topBackground: liquidScaffoldSky()) {
                 moreSection("Insights") {
+                    MoreRow("Trends", "chart.line.uptrend.xyaxis", .trends)
                     MoreRow("What Moves You", "wand.and.sparkles", .insightsHub)
                     MoreRow("Intelligence", "brain.head.profile", .intelligence)
                     MoreRow("Coach", "sparkles", .coach)
@@ -484,7 +486,7 @@ struct RootTabView: View {
 /// per-screen chrome the old inline links applied lives at the single `navigationDestination(for:)`
 /// registration in `moreTab`.
 private enum MoreDestination: Hashable {
-    case insightsHub, intelligence, coach, insights, explore, compare
+    case insightsHub, intelligence, coach, insights, explore, compare, trends
     case live, workouts, health, labBook, stress, breathe, intervals, rhythm
     case fusedRecord, appleHealth, miBand, dataSources, backupSync, shortcutsExport
     case alarms, automations, testCentre, siriShortcuts, settings
@@ -497,6 +499,7 @@ private enum MoreDestination: Hashable {
         case .insights:        InsightsView()
         case .explore:         MetricExplorerView()
         case .compare:         CompareView()
+        case .trends:          TrendsView()
         case .live:            LiveView()
         case .workouts:        WorkoutsView()
         case .health:          HealthView()
@@ -662,9 +665,9 @@ private struct FloatingTabBar: View {
     var onReselect: (Int) -> Void = { _ in }
 
     private struct Item: Identifiable { let title: LocalizedStringKey; let icon: String; let tag: Int; var id: Int { tag } }
-    private let nav = [Item(title: "Today", icon: "square.grid.2x2", tag: 0),
-                       Item(title: "Trends", icon: "chart.line.uptrend.xyaxis", tag: 1),
-                       Item(title: "Sleep", icon: "bed.double", tag: 2),
+    private let nav = [Item(title: "Home", icon: "house.fill", tag: 0),
+                       Item(title: "Health", icon: "heart.fill", tag: 1),
+                       Item(title: "Sleep", icon: "bed.double.fill", tag: 2),
                        Item(title: "More", icon: "ellipsis", tag: 3)]
 
     var body: some View {
