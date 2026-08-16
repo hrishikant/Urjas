@@ -62,6 +62,10 @@ public struct TrendChart: View {
     /// so it needs no macOS14/iOS17 plot-dimension padding API — works on our macOS13/iOS16 floor.
     public var yDomain: ClosedRange<Double>?
 
+    /// WHOOP-style "typical range" — a faint horizontal band drawn behind the line marking the
+    /// metric's usual span (e.g. the interquartile range of the window). nil = no band.
+    public var typicalRange: ClosedRange<Double>?
+
     /// Mean of all point values, computed once in `init` so the area fill's gradient
     /// stop doesn't run an O(n) reduce for every mark on every render.
     private let averageValue: Double
@@ -81,7 +85,8 @@ public struct TrendChart: View {
         dateFormat: @escaping (Date) -> String = { TrendChart.defaultDateString($0) },
         accessibilityLabel: String? = nil,
         nowCapColor: Color? = nil,
-        yDomain: ClosedRange<Double>? = nil
+        yDomain: ClosedRange<Double>? = nil,
+        typicalRange: ClosedRange<Double>? = nil
     ) {
         let sorted = points.sorted { $0.date < $1.date }
         self.points = sorted
@@ -96,6 +101,7 @@ public struct TrendChart: View {
         self.accessibilityLabel = accessibilityLabel
         self.nowCapColor = nowCapColor
         self.yDomain = yDomain
+        self.typicalRange = typicalRange
         let avg = sorted.isEmpty
             ? valueRange.lowerBound
             : sorted.map(\.value).reduce(0, +) / Double(sorted.count)
@@ -178,6 +184,14 @@ public struct TrendChart: View {
 
     public var body: some View {
         Chart {
+            // WHOOP-style typical-range band: a faint full-width horizontal strip behind the line.
+            if let typ = typicalRange {
+                RectangleMark(
+                    yStart: .value("Typical low", typ.lowerBound),
+                    yEnd: .value("Typical high", typ.upperBound)
+                )
+                .foregroundStyle(StrandPalette.textTertiary.opacity(0.16))
+            }
             if showsBars {
                 // Bar mode: one value-ramp-filled BarMark per (down-sampled) sample, from the baseline.
                 // The line, area and point marks are all replaced. The same `displayPoints` feed it, so a

@@ -1011,6 +1011,7 @@ struct MetricDetailView: View {
         let subtitle = windowFellBack
             ? String(localized: "Sparse, widened to \(effectiveRange.name) · \(windowed.count) readings")
             : String(localized: "\(windowed.count) readings · \(range.name)")
+        let typical = typicalBand(windowed.map(\.value))
         return ChartCard(
             title: "\(metric.title)",
             subtitle: subtitle,
@@ -1023,15 +1024,33 @@ struct MetricDetailView: View {
                 valueRange: valueRange(windowed.map(\.value)),
                 showsArea: true,
                 height: NoopMetrics.chartHeight,
-                valueFormat: { fmt($0) }
+                valueFormat: { fmt($0) },
+                typicalRange: typical
             )
         } footer: {
             ChartFooter([
                 ("Window", effectiveRange.label),
                 ("Points", "\(windowed.count)"),
-                ("Latest", heroValue),
+                typical.map { ("Typical", "\(fmt($0.lowerBound))–\(fmt($0.upperBound))") }
+                    ?? ("Latest", heroValue),
             ])
         }
+    }
+
+    /// WHOOP-style "typical range": the interquartile band (25th–75th percentile) of the window,
+    /// so the chart shows where this metric usually sits. nil when there are too few points.
+    private func typicalBand(_ values: [Double]) -> ClosedRange<Double>? {
+        let xs = values.sorted()
+        guard xs.count >= 5 else { return nil }
+        func pct(_ p: Double) -> Double {
+            let idx = p * Double(xs.count - 1)
+            let lo = Int(idx.rounded(.down)), hi = Int(idx.rounded(.up))
+            let frac = idx - Double(lo)
+            return xs[lo] + (xs[hi] - xs[lo]) * frac
+        }
+        let lo = pct(0.25), hi = pct(0.75)
+        guard hi > lo else { return nil }
+        return lo...hi
     }
 
     // MARK: Stat tile row (uniform 104pt tiles)
