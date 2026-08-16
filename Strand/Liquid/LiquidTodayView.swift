@@ -258,6 +258,10 @@ struct LiquidTodayView: View {
                     // pinned above the reorderable block so an active manual workout is immediately visible
                     // and taps straight through to Live. Renders nothing when no workout is active.
                     ActiveWorkoutIndicatorSection()
+                    // Contextual "next best action" coaching prompt (WHOOP-style). Reads today's live
+                    // Charge / Strain / Stress and surfaces one gentle suggestion, tapping through to the
+                    // relevant screen. Today only, and only once data has settled so it never guesses.
+                    if selectedDayOffset == 0, dataLoaded { suggestionSection }
                     // #today-layout (parity with Android): every Today section — the Charge/Effort/Rest hero
                     // and Start-session included — renders in the user's saved order. Reorder via the Arrange
                     // sheet (the header's up/down button; native drag rows); the order persists under the
@@ -736,6 +740,77 @@ struct LiquidTodayView: View {
             )
         }
         .buttonStyle(LiquidPressStyle())
+    }
+
+    // MARK: - Contextual suggestion (next best action)
+
+    /// A single coaching prompt derived from today's live signals. Priority order surfaces the most
+    /// actionable state first: high stress → breathe, low recovery → rest, high accumulated strain →
+    /// ease off, then a primed "room to push" nudge. Returns nil when nothing is worth prompting.
+    private var contextSuggestion: (title: String, sub: String, icon: String, tint: Color, route: TabRoute)? {
+        let charge = chargeDisplay.pct
+        let strain = displayDay?.strain
+        let st = stress
+
+        if let s = st, s >= 2.0 {
+            return (String(localized: "Stress is running high"),
+                    String(localized: "A few slow breaths can bring it down. Tap to check in."),
+                    "wind", StrandPalette.stressColor, .stress)
+        }
+        if let c = charge, c < 34 {
+            return (String(localized: "Recovery is low today"),
+                    String(localized: "Prioritise rest and keep strain gentle."),
+                    "bed.double.fill", StrandPalette.chargeColor, .metric("recovery"))
+        }
+        if let c = charge, let s = strain, s >= 70, c < 60 {
+            return (String(localized: "You've built solid strain"),
+                    String(localized: "Ease off to protect tomorrow's recovery."),
+                    "figure.cooldown", StrandPalette.effortColor, .metric("strain"))
+        }
+        if let c = charge, c >= 67, (strain ?? 0) < 40 {
+            return (String(localized: "You're primed to push"),
+                    String(localized: "Recovery is high with room to build strain."),
+                    "bolt.fill", StrandPalette.chargeColor, .workouts)
+        }
+        return nil
+    }
+
+    @ViewBuilder
+    private var suggestionSection: some View {
+        if let s = contextSuggestion {
+            NavigationLink(value: s.route) {
+                HStack(spacing: 12) {
+                    Image(systemName: s.icon)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(s.tint)
+                        .frame(width: 38, height: 38)
+                        .background(Circle().fill(s.tint.opacity(0.14)))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(s.title).font(StrandFont.headline)
+                            .foregroundStyle(StrandPalette.textPrimary)
+                        Text(s.sub).font(StrandFont.caption)
+                            .foregroundStyle(StrandPalette.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(StrandPalette.textTertiary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(StrandPalette.surfaceRaised)
+                        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(s.tint.opacity(0.28), lineWidth: 1))
+                        .opacity(cardOpacity)
+                )
+            }
+            .buttonStyle(LiquidPressStyle())
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(s.title). \(s.sub)")
+        }
     }
 
     // MARK: - Synthesis (greeting + readiness pills + one-liner)
