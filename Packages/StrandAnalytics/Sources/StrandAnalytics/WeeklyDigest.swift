@@ -41,9 +41,9 @@ public enum WeeklyMetric: String, CaseIterable, Sendable {
     /// Human label for the metric (matches the rest of the app's naming).
     public var label: String {
         switch self {
-        case .charge: return "Charge"
-        case .effort: return "Effort"
-        case .rest:   return "Rest"
+        case .charge: return "Recovery"
+        case .effort: return "Strain"
+        case .rest:   return "Sleep"
         case .rhr:    return "Resting HR"
         case .hrv:    return "HRV"
         }
@@ -195,13 +195,13 @@ public enum BalanceRead: String, Equatable, Sendable {
     public var sentence: String {
         switch self {
         case .overreaching:
-            return "Your Effort outpaced your Charge this week: you leaned into the red. Watch for a recovery dip."
+            return "Your Strain outpaced your Recovery this week: you leaned into the red. Watch for a recovery dip."
         case .balanced:
-            return "Effort and Charge tracked together this week: a sustainable load."
+            return "Strain and Recovery tracked together this week: a sustainable load."
         case .underloaded:
-            return "You carried more Charge than you spent this week: there's room to push if you want it."
+            return "You carried more Recovery than you spent this week: there's room to push if you want it."
         case .insufficient:
-            return "Not enough Effort and Charge days this week to read your balance."
+            return "Not enough Strain and Recovery days this week to read your balance."
         }
     }
 }

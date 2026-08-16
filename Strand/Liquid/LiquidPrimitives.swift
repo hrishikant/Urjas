@@ -220,16 +220,20 @@ struct LiquidVessel: View {
     let value: Double?
     let tint: Color
     var animated: Bool = true
+    /// When false the vessel drops its own tap-to-splash gesture so an enclosing control (e.g. the
+    /// hero's NavigationLink) receives the tap instead. Defaults to the standalone splash behaviour.
+    var interactiveSplash: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var motion = NoopMotionState.shared
     @State private var sim: LiquidSim
     @State private var splashes = 0
 
-    init(value: Double?, tint: Color, animated: Bool = true) {
+    init(value: Double?, tint: Color, animated: Bool = true, interactiveSplash: Bool = true) {
         self.value = value
         self.tint = tint
         self.animated = animated
+        self.interactiveSplash = interactiveSplash
         _sim = State(initialValue: LiquidSim(target: value ?? 0))
     }
 
@@ -250,7 +254,7 @@ struct LiquidVessel: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .contentShape(Circle())
-        .onTapGesture { sim.splash(12); splashes &+= 1 }
+        .modifier(SplashTap(enabled: interactiveSplash) { sim.splash(12); splashes &+= 1 })
         .liquidTapHaptic(trigger: splashes)   // light tap feedback (guarded so the primitives compile on macOS 13)
         .onAppear { LiquidMotion.shared.acquire() }
         .onDisappear { LiquidMotion.shared.release() }
@@ -263,6 +267,53 @@ struct LiquidVessel: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .contentShape(Circle())
+    }
+}
+
+/// A WHOOP-style circular progress ring: a faint full-circle track under a colored progress arc
+/// with rounded caps, starting at 12 o'clock. `value` is 0...1 (nil = no data → track only). A
+/// subtle same-hue glow gives the ring depth without the busy liquid slosh. Used by the Today hero
+/// and the metric detail's big score ring.
+struct ScoreRing: View {
+    let value: Double?
+    let tint: Color
+    var lineWidth: CGFloat = 8
+    var glow: Bool = true
+
+    @State private var shown: CGFloat = 0
+    private var frac: CGFloat { CGFloat(max(0, min(1, value ?? 0))) }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.10), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: shown)
+                .stroke(
+                    AngularGradient(gradient: Gradient(colors: [tint.opacity(0.7), tint]),
+                                    center: .center,
+                                    startAngle: .degrees(-90), endAngle: .degrees(270)),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .shadow(color: glow ? tint.opacity(0.45) : .clear, radius: glow ? 5 : 0)
+        }
+        .padding(lineWidth / 2)
+        .onAppear { animate(to: frac) }
+        .onChangeCompat(of: value ?? 0) { _ in animate(to: frac) }
+    }
+
+    private func animate(to v: CGFloat) {
+        withAnimation(.easeOut(duration: 0.9)) { shown = v }
+    }
+}
+
+/// Applies a tap-to-splash gesture only when `enabled`, so a vessel embedded in a NavigationLink
+/// (the hero scores) can let the enclosing button receive the tap instead.
+private struct SplashTap: ViewModifier {
+    let enabled: Bool
+    let action: () -> Void
+    func body(content: Content) -> some View {
+        if enabled { content.onTapGesture(perform: action) } else { content }
     }
 }
 

@@ -709,7 +709,7 @@ struct WorkoutsView: View {
         let displayValue = UnitFormatter.effortValue(avgStrain, scale: effortScale)
         let fraction = max(0, min(1, displayValue / scaleMax))
         VStack(spacing: 18) {
-            Text("TYPICAL EFFORT")
+            Text("TYPICAL STRAIN")
                 .font(StrandFont.overline).tracking(StrandFont.overlineTracking)
                 .foregroundStyle(StrandPalette.effortColor)
             if hasData {
@@ -737,7 +737,7 @@ struct WorkoutsView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(String(localized: "Typical effort \(UnitFormatter.effortDisplay(avgStrain, scale: effortScale))"))
+                .accessibilityLabel(String(localized: "Typical strain \(UnitFormatter.effortDisplay(avgStrain, scale: effortScale))"))
             } else {
                 // No strain data in the window — an empty vessel (posed, no fill) with a centred "No data",
                 // the honest liquid analogue of the old empty ring.
@@ -752,7 +752,7 @@ struct WorkoutsView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(String(localized: "Typical effort, no data"))
+                .accessibilityLabel(String(localized: "Typical strain, no data"))
             }
         }
     }
@@ -762,7 +762,7 @@ struct WorkoutsView: View {
                                  groups: [SportGroup], totalTimeH: Double) -> some View {
         let modal = modalSport(from: groups)
         VStack(alignment: .leading, spacing: 12) {
-            Text("Effort this \(effectiveRange.heroWord)")
+            Text("Strain this \(effectiveRange.heroWord)")
                 .font(StrandFont.headline)
                 .foregroundStyle(StrandPalette.textPrimary)
             HStack(spacing: NoopMetrics.gap) {
@@ -1177,7 +1177,7 @@ struct WorkoutsView: View {
             // #796 - per-session Effort (the stored 0-100 strain this workout contributed to the day),
             // shown on the user's selected Effort scale. Same value the Effort ring and the detail's
             // Effort card read, surfaced per row so each session's effort is visible without opening it.
-            colHeader(String(localized: "EFFORT"), width: ColWidth.effort, align: .trailing)
+            colHeader(String(localized: "STRAIN"), width: ColWidth.effort, align: .trailing)
             Spacer(minLength: 0)
             colHeader(String(localized: "SOURCE"), width: ColWidth.source, align: .trailing)
             // Empty header over the per-row "•••" actions menu column (keeps SOURCE aligned).
@@ -1393,8 +1393,8 @@ struct WorkoutsView: View {
     /// A full-sentence a11y label for a compact row.
     private func compactRowAccessibilityLabel(_ row: WorkoutRow, selectable: Bool, isSelected: Bool) -> String {
         let effort = row.strain != nil
-            ? String(localized: "Effort \(Self.effortCellLabel(strain: row.strain, scale: effortScale))")
-            : String(localized: "no Effort recorded")
+            ? String(localized: "Strain \(Self.effortCellLabel(strain: row.strain, scale: effortScale))")
+            : String(localized: "no Strain recorded")
         let base = String(localized: "\(WorkoutSource.displaySport(row.sport)), \(compactRowSubtitle(row)), \(effort)")
         guard selectionMode else { return base }
         if !selectable { return String(localized: "\(base). Imported, can't be merged.") }

@@ -353,6 +353,8 @@ enum DemoScreens {
         case "health":   return AnyView(HealthView())
         case "insights": return AnyView(InsightsView())
         case "explore":  return AnyView(MetricExplorerView())
+        case "recoverydetail": return AnyView(MetricDetailDemoHost(key: "recovery"))
+        case "straindetail":   return AnyView(MetricDetailDemoHost(key: "strain"))
         case "compare":  return AnyView(CompareView())
         case "settings": return AnyView(SettingsView())
         case "chargebreakdown": return AnyView(ChargeBreakdownDemoHost())
@@ -377,6 +379,21 @@ enum DemoScreens {
     }
 }
 #endif
+#endif
+
+#if DEBUG
+/// DEBUG-only host so `--demo-screen recoverydetail|straindetail` can screenshot the metric detail
+/// (its big WHOOP-style score ring + chart) without a tap. Env objects come from the app root.
+private struct MetricDetailDemoHost: View {
+    let key: String
+    var body: some View {
+        if let m = MetricCatalog.all.first(where: { $0.key == key }) {
+            MetricDetailView(metric: m)
+        } else {
+            Text("no metric \(key)")
+        }
+    }
+}
 #endif
 
 #if DEBUG

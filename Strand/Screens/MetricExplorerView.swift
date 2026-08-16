@@ -469,7 +469,7 @@ struct MetricDetailView: View {
     /// when the setting is on, the plain canvas when off — so a Key-Metrics tile tap doesn't jar from the
     /// liquid Today's sky to a flat page. Same keys TodayView/LiquidTodayView gate on; "Sky behind cards"
     /// extends the sky to the full viewport (softer settle) so the transparent cards reveal it throughout.
-    @AppStorage(SceneBackgroundPrefs.enabledKey) private var showDayCycleBackground = true
+    @AppStorage(SceneBackgroundPrefs.enabledKey) private var showDayCycleBackground = false
     @AppStorage(SkyBehindCardsPrefs.enabledKey) private var skyBehindCards = true
     // Profile basics for the Fitness Age not-ready countdown (age/sex gate its readiness lead). Injected
     // app-wide at the root; previews supply their own. Only read on the fitness_age empty-state path.
@@ -789,9 +789,8 @@ struct MetricDetailView: View {
                     if let fraction, let v = value {
                         VStack(spacing: 10) {
                             ZStack {
-                                // The big hero vessel stays live (animated) — the one sloshing gauge on the
-                                // screen, exactly like the hero gauges on Today.
-                                LiquidVessel(value: heroAnimatedFraction, tint: domain.bright, animated: true)
+                                // The big hero score ring (WHOOP-style), filling to the metric's fraction.
+                                ScoreRing(value: heroAnimatedFraction, tint: domain.bright, lineWidth: 12)
                                     .frame(width: 188, height: 188)
                                     .accessibilityHidden(true)
                                 VStack(spacing: 2) {

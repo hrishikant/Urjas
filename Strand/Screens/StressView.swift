@@ -579,28 +579,57 @@ private struct StressHeroGauge: View {
     let score: Double        // 0–3
     let tint: Color
 
-    private var frac: Double { max(0, min(1, score / 3.0)) }
+    private var frac: CGFloat { CGFloat(max(0, min(1, score / 3.0))) }
+    private let diameter: CGFloat = 132
+    private let lw: CGFloat = 11
+    @State private var shown: CGFloat = 0
+
+    private var needleLen: CGFloat { diameter / 2 - lw - 3 }
 
     var body: some View {
-        ZStack {
-            LiquidVessel(value: frac, tint: tint, animated: true)
-                .frame(width: 104, height: 104)
+        VStack(spacing: 4) {
+            ZStack(alignment: .center) {
+                // Faint half-circle track.
+                Circle().trim(from: 0.5, to: 1.0)
+                    .stroke(Color.white.opacity(0.10),
+                            style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                // The teal→green→amber stress ramp mapped across the top semicircle (left = calm).
+                Circle().trim(from: 0.5, to: 1.0)
+                    .stroke(AngularGradient(gradient: Gradient(colors: [
+                                Color(hex: "#3AD1C0"), Color(hex: "#46B45A"), Color(hex: "#F2A63D")]),
+                            center: .center,
+                            startAngle: .degrees(180), endAngle: .degrees(360)),
+                            style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                // Needle: a full-diameter layer rotated around the hub so the capsule pivots at centre.
+                ZStack {
+                    Capsule().fill(Color.white)
+                        .frame(width: 3, height: needleLen)
+                        .offset(y: -needleLen / 2)
+                }
+                .frame(width: diameter, height: diameter)
+                .rotationEffect(.degrees(Double(shown - 0.5) * 180))
+                Circle().fill(Color.white).frame(width: 9, height: 9)
+                    .shadow(color: .black.opacity(0.4), radius: 2)
+            }
+            .frame(width: diameter, height: diameter)
+            .frame(height: diameter / 2 + lw, alignment: .top)
+            .clipped()
+            // The value + "of 3" tucked just under the arc, WHOOP-style.
             VStack(spacing: 0) {
-                // CountUpText self-animates (counts up from 0 on appear, re-rolls on value change),
-                // so the score is passed straight through — no external roll state needed.
                 CountUpText(
                     value: score,
                     format: { String(format: "%.1f", $0) },
-                    font: StrandFont.rounded(34, weight: .bold),
+                    font: StrandFont.rounded(30, weight: .bold),
                     color: .white
                 )
-                .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
                 Text("of 3")
                     .font(StrandFont.caption)
                     .foregroundStyle(StrandPalette.textSecondary)
             }
-            .allowsHitTesting(false)   // taps fall through to the vessel → splash
+            .offset(y: -6)
         }
+        .onAppear { withAnimation(.easeOut(duration: 0.9)) { shown = frac } }
+        .onChangeCompat(of: score) { _ in withAnimation(.easeOut(duration: 0.9)) { shown = frac } }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Stress \(String(format: "%.1f", score)) of 3")
     }

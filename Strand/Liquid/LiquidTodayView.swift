@@ -70,7 +70,7 @@ struct LiquidTodayView: View {
     // Android (byte-identical @AppStorage keys). `kSparks` holds the trailing-14-day series the detailed
     // tiles graph (keyed by metric-catalog key), filled by the loader alongside everything else.
     @AppStorage(KeyMetricPrefs.layoutKey) private var keyMetricsRaw = ""
-    @AppStorage("today.keyMetricsDetailed") private var keyMetricsDetailed = false
+    @AppStorage("today.keyMetricsDetailed") private var keyMetricsDetailed = true
     /// The detailed graphs' trailing window — 2 days / 1 week / 2 weeks (shared key with Android). The
     /// loader banks a day-keyed 14-day superset; render filters down, so a window change applies instantly.
     @AppStorage("today.keyMetricsWindowDays") private var keyMetricsWindowDays = 14
@@ -124,7 +124,7 @@ struct LiquidTodayView: View {
     /// Day-cycle scene backdrop (#698). Default ON. When off, the liquid Today drops the sky for the plain
     /// dark canvas — parity with Android and the classic TodayView, which already honour this pref. Mirrors
     /// Kotlin `NoopPrefs.showDayCycleBackground`.
-    @AppStorage(SceneBackgroundPrefs.enabledKey) private var showDayCycleBackground = true
+    @AppStorage(SceneBackgroundPrefs.enabledKey) private var showDayCycleBackground = false
 
     // MARK: - Day navigation (ported from classic Today: swipe + calendar, day-keyed reads)
 
@@ -503,7 +503,7 @@ struct LiquidTodayView: View {
             )
         }
         .buttonStyle(LiquidPressStyle())
-        .accessibilityLabel("Start a live session. Beta. Silent strap coaching against today's Charge.")
+        .accessibilityLabel("Start a live session. Beta. Silent strap coaching against today's Recovery.")
     }
 
     private var heroCard: some View {
@@ -513,7 +513,7 @@ struct LiquidTodayView: View {
             // Activity (`Repository.widgetAnchor`) and Android. Effort deliberately does NOT carry — it is
             // today's own accumulation, so yesterday's number would be a false statement, not a stale one.
             HeroScoreCell(label: String(localized: "Charge"), score: chargeDisplay.pct, tint: StrandPalette.chargeColor,
-                          animated: dataLoaded, onGuide: { guideSection = .charge })
+                          animated: dataLoaded, destination: .metric("recovery"), onGuide: { guideSection = .charge })
             // #45: the hero Effort must honour the user's Effort scale like every other Effort read-out.
             // Show the value on the chosen scale (0–100 or WHOOP 0–21) with the matching vessel max, and
             // one decimal on the compressed 0–21 axis to match the app-wide `effortDisplay` convention
@@ -521,11 +521,12 @@ struct LiquidTodayView: View {
             HeroScoreCell(label: String(localized: "Effort"),
                           score: displayDay?.strain.map { UnitFormatter.effortValue($0, scale: effortScale) },
                           tint: StrandPalette.effortColor, animated: dataLoaded,
+                          destination: .metric("strain"),
                           onGuide: { guideSection = .effort },
                           maxValue: effortScale == .whoop ? 21 : 100,
                           decimals: effortScale == .whoop ? 1 : 0)
-            HeroScoreCell(label: String(localized: "Rest"), score: restScore, tint: StrandPalette.restColor,
-                          animated: dataLoaded, onGuide: { guideSection = .rest })
+            HeroScoreCell(label: String(localized: "Sleep"), score: restScore, tint: StrandPalette.restColor,
+                          animated: dataLoaded, destination: .sleep, onGuide: { guideSection = .rest })
                 .overlay(alignment: .top) {
                     if let sourceLabel = heroSourceLabel {
                         SourceBadge("\(sourceLabel)", tint: StrandPalette.onDarkSecondary)
@@ -704,7 +705,7 @@ struct LiquidTodayView: View {
     /// String Catalog entry verbatim — one key serves both Today screens.
     private var effortZeroNote: String? {
         guard EffortDisplay.showsZeroNote(strain: displayDay?.strain, isToday: selectedDayOffset == 0) else { return nil }
-        return String(localized: "No cardio load yet. Effort builds once your heart rate climbs into your effort zone (around 50% of your heart-rate reserve). A calm day honestly reads near zero.")
+        return String(localized: "No cardio load yet. Strain builds once your heart rate climbs into your strain zone (around 50% of your heart-rate reserve). A calm day honestly reads near zero.")
     }
 
     private var synthesisSection: some View {
@@ -896,7 +897,7 @@ struct LiquidTodayView: View {
         case .effort:
             ktile(String(localized: "Strain"), intText(displayDay?.strain), "%", StrandPalette.effortColor, frac(displayDay?.strain), key: "strain")
         case .rest:
-            ktile(String(localized: "Rest"), intText(restScore), "%", StrandPalette.restColor, frac(restScore), key: "sleep_performance")
+            ktile(String(localized: "Sleep"), intText(restScore), "%", StrandPalette.restColor, frac(restScore), key: "sleep_performance")
         case .hrv:
             ktile("HRV", intText(hrv), "ms", StrandPalette.metricCyan, fracOver(hrv, 120), key: "hrv")
         case .restingHr:
@@ -1002,7 +1003,7 @@ struct LiquidTodayView: View {
                     }
                     Spacer()
                     (Text(effortText(w.strain)).font(StrandFont.number(15))
-                        + Text(" EFFORT").font(StrandFont.overlineScaled(9)))
+                        + Text(" STRAIN").font(StrandFont.overlineScaled(9)))
                         .foregroundStyle(StrandPalette.textPrimary)
                 }
                 LiquidTube(frac: (w.strain ?? 0) / 100, tint: StrandPalette.effortColor, height: 12, animated: false)
@@ -1260,7 +1261,7 @@ struct LiquidTodayView: View {
         switch readiness.level {
         case .primed: return String(localized: "Push")
         case .balanced: return String(localized: "Maintain")
-        case .strained, .rundown: return String(localized: "Rest")
+        case .strained, .rundown: return String(localized: "Rest up")
         case .insufficient: return nil
         }
     }
@@ -1423,7 +1424,7 @@ private struct LiquidWordmark: View {
             ForEach(Array("Ūrjas".enumerated()), id: \.offset) { _, ch in
                 Text(String(ch))
                     .font(StrandFont.rounded(16, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(0.9))
             }
         }
         .shadow(color: .black.opacity(0.25), radius: 6, y: 1)
@@ -1476,6 +1477,8 @@ private struct HeroScoreCell: View {
     let score: Double?            // on whatever scale the caller passes (nil = no data yet)
     let tint: Color
     let animated: Bool
+    /// Where tapping the vessel navigates — the metric's own detail (WHOOP parity: tap a ring → open it).
+    let destination: TabRoute
     let onGuide: () -> Void
     // The scale `score` is already expressed on — 100 for Charge/Rest, or the user's chosen Effort scale
     // max (100 or 21, #45) — so the vessel fill matches the displayed number.
@@ -1490,37 +1493,42 @@ private struct HeroScoreCell: View {
 
     var body: some View {
         VStack(spacing: 7) {
-            ZStack {
-                LiquidVessel(value: frac, tint: tint, animated: animated)
-                    .frame(width: Self.vesselDiameter, height: Self.vesselDiameter)
-                Group {
-                    if score != nil {
-                        CountUpNumber(value: shown, font: StrandFont.rounded(26), decimals: decimals)
-                    } else {
-                        Text("–").font(StrandFont.rounded(26))
+            NavigationLink(value: destination) {
+                ZStack {
+                    ScoreRing(value: frac, tint: tint, lineWidth: 8)
+                        .frame(width: Self.vesselDiameter, height: Self.vesselDiameter)
+                    Group {
+                        if score != nil {
+                            CountUpNumber(value: shown, font: StrandFont.rounded(26), decimals: decimals)
+                        } else {
+                            Text("–").font(StrandFont.rounded(26))
+                        }
                     }
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .allowsHitTesting(false)   // the whole ring is the tap target
                 }
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .allowsHitTesting(false)   // taps fall through to the vessel → splash
+                .contentShape(Circle())
             }
+            .buttonStyle(LiquidPressStyle())
+            .accessibilityLabel(Text("\(label), \(score.map { decimals > 0 ? String(format: "%.\(decimals)f", $0) : String(Int($0.rounded())) } ?? String(localized: "no data yet")). Open \(label) details."))
             Button(action: onGuide) {
                 HStack(spacing: 3) {
                     // #74: one line, shrink-to-fit rather than wrap under large Dynamic Type (mirrors the
-                    // score number above) so CHARGE/EFFORT/REST never grow the hero card to two lines.
+                    // score number above) so RECOVERY/STRAIN/SLEEP never grow the hero card to two lines.
                     Text(label.uppercased()).font(StrandFont.overline).tracking(1.6)
                         .lineLimit(1).minimumScaleFactor(0.7)
                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).opacity(0.6)
                 }
-                // The hero card fill is pinned dark in BOTH themes, so the CHARGE/EFFORT/REST label must use
-                // the scheme-invariant on-dark token — textSecondary flips to dark ink in Light mode and
+                // The hero card fill is pinned dark in BOTH themes, so the RECOVERY/STRAIN/SLEEP label must
+                // use the scheme-invariant on-dark token — textSecondary flips to dark ink in Light mode and
                 // went dark-on-near-black here (#1013).
                 .foregroundStyle(StrandPalette.onDarkSecondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(Text("\(label), \(score.map { decimals > 0 ? String(format: "%.\(decimals)f", $0) : String(Int($0.rounded())) } ?? String(localized: "no data yet")). See how it is scored."))
+            .accessibilityLabel(Text("How \(label) is scored."))
         }
         .frame(maxWidth: .infinity)
         .onAppear { rollTo(score) }

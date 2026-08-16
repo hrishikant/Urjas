@@ -37738,58 +37738,59 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ladung"
+            "value": "Recovery"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Charge"
+            "value": "Recovery"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Carga"
+            "value": "Recovery"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Charge"
+            "value": "Recovery"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Carica"
+            "value": "Recovery"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Carga"
+            "value": "Recovery"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Заряд"
+            "value": "Recovery"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "能量"
+            "value": "Recovery"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "能量"
+            "value": "Recovery"
           }
         }
-      }
+      },
+      "extractionState": "manual"
     },
     "Charge %@%%": {
       "localizations": {
@@ -53484,52 +53485,59 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "ANSTRENGUNG"
+            "value": "STRAIN"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "ESFUERZO"
+            "value": "STRAIN"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "EFFORT"
+            "value": "STRAIN"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "SFORZO"
+            "value": "STRAIN"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "EFFORT"
+            "value": "STRAIN"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "УСИЛИЕ"
+            "value": "STRAIN"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "消耗"
+            "value": "STRAIN"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "消耗"
+            "value": "STRAIN"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "STRAIN"
           }
         }
-      }
+      },
+      "extractionState": "manual"
     },
     "EFFORT BUILDING": {
       "localizations": {
@@ -55020,58 +55028,59 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anstrengung"
+            "value": "Strain"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Effort"
+            "value": "Strain"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Esfuerzo"
+            "value": "Strain"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Effort"
+            "value": "Strain"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sforzo"
+            "value": "Strain"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Esforço"
+            "value": "Strain"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Усилие"
+            "value": "Strain"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "消耗"
+            "value": "Strain"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "消耗"
+            "value": "Strain"
           }
         }
-      }
+      },
+      "extractionState": "manual"
     },
     "Effort (0–100)": {
       "localizations": {
@@ -109616,52 +109625,59 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "RUHE"
+            "value": "SLEEP"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "DESCANSO"
+            "value": "SLEEP"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "REPOS"
+            "value": "SLEEP"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "RIPOSO"
+            "value": "SLEEP"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "DESCANSO"
+            "value": "SLEEP"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "ОТДЫХ"
+            "value": "SLEEP"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "休息"
+            "value": "SLEEP"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "休息"
+            "value": "SLEEP"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SLEEP"
           }
         }
-      }
+      },
+      "extractionState": "manual"
     },
     "RESTING HR + SLEEP + HRV": {
       "localizations": {
@@ -117180,58 +117196,59 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ruhe"
+            "value": "Sleep"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rest"
+            "value": "Sleep"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Descanso"
+            "value": "Sleep"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Repos"
+            "value": "Sleep"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Riposo"
+            "value": "Sleep"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Descanso"
+            "value": "Sleep"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Отдых"
+            "value": "Sleep"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "休息"
+            "value": "Sleep"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "休息"
+            "value": "Sleep"
           }
         }
-      }
+      },
+      "extractionState": "manual"
     },
     "Rest HR": {
       "localizations": {

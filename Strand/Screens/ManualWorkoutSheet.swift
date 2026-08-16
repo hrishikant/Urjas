@@ -102,7 +102,7 @@ struct ManualWorkoutSheet: View {
                 }
             }
             if let validationNote { noteRow(validationNote) }
-            if avgHrEditedNote { noteRow(String(localized: "Avg HR is shown as typed. The HR graph, zones and Effort stay from the recorded session.")) }
+            if avgHrEditedNote { noteRow(String(localized: "Avg HR is shown as typed. The HR graph, zones and Strain stay from the recorded session.")) }
             footer
         }
         .padding(NoopMetrics.space6)
@@ -395,7 +395,7 @@ struct StartWorkoutSheet: View {
         self.onStart = onStart
         self.heading = title ?? String(localized: "Start a workout")
         self.explainer = subtitle
-            ?? String(localized: "Pick a sport. NOOP records HR, peak, average and effort from the live feed.")
+            ?? String(localized: "Pick a sport. NOOP records HR, peak, average and strain from the live feed.")
         self.actionVerb = actionVerb ?? String(localized: "Start")
     }
 
