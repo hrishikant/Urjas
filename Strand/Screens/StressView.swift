@@ -104,6 +104,17 @@ struct StressView: View {
         // reset a later refresh that hits this path would leave the Advanced HRV card showing stale values
         // next to an empty timeline (the readouts are only recomputed past this guard).
         guard hr.count >= DaytimeStress.minHourHRSamples else {
+            #if DEBUG
+            // Demo/marketing builds seed only daily metrics (no intraday HR), so the WHOOP-style
+            // intraday line + zone bar would never show. Synthesize a plausible waking-day timeline
+            // so the section renders under --demo-seed. Real builds fall through to `.empty`.
+            if CommandLine.arguments.contains("--demo-seed") {
+                daytime = Self.demoDaytime()
+                stressIndex = nil
+                freqHRV = nil
+                return
+            }
+            #endif
             daytime = .empty
             stressIndex = nil
             freqHRV = nil
@@ -121,6 +132,34 @@ struct StressView: View {
         stressIndex = StressIndex.components(rr: rr)
         freqHRV = HRVFreqDomain.freqDomain(rr: rr)
     }
+
+    #if DEBUG
+    /// A plausible waking-day (07:00–21:00) intraday stress timeline for demo/marketing builds,
+    /// so the WHOOP-style line + zone bar render under --demo-seed. Not compiled into Release.
+    private static func demoDaytime() -> DaytimeStress.Result {
+        let cal = Calendar.current
+        let startOfDay = cal.startOfDay(for: Date())
+        // Hand-tuned 0–3 curve: calm morning, a mid-morning work spike, an afternoon dip, a
+        // brief evening bump, settling by night — reads like a real day.
+        let levels: [Int: Double] = [
+            7: 0.5, 8: 0.9, 9: 1.4, 10: 2.1, 11: 1.7, 12: 1.1, 13: 0.8,
+            14: 1.0, 15: 1.5, 16: 1.2, 17: 0.9, 18: 1.3, 19: 0.7, 20: 0.5, 21: 0.4
+        ]
+        let hours: [DaytimeStress.HourPoint] = levels.keys.sorted().map { h in
+            let lvl = levels[h]!
+            let ts = Int((cal.date(byAdding: .hour, value: h, to: startOfDay) ?? startOfDay)
+                .timeIntervalSince1970)
+            return DaytimeStress.HourPoint(
+                hour: h, startTs: ts, level: lvl,
+                meanHR: 58 + lvl * 9, rmssd: max(18, 70 - lvl * 14))
+        }
+        let peak = hours.max { ($0.level ?? 0) < ($1.level ?? 0) }
+        let scored = hours.compactMap { $0.level }
+        let mean = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
+        return DaytimeStress.Result(hours: hours, sustainedHigh: false, sustainedRun: 0,
+                                    dayMean: mean, peak: peak)
+    }
+    #endif
 
     /// Recompute the cached `StressModel` only when (repo.days, storedSeries)
     /// actually changed since the last build. Equality is an O(n) value compare,
@@ -142,35 +181,35 @@ struct StressView: View {
             heroCard(model)
                 .staggeredAppear(index: 0)
 
-            // 1b. ADVANCED HRV readouts (additive, on-demand). A separate, clearly-labelled card
+            // 2. WHOOP layout: the intraday timeline (live line + calm/moderate/high zone bar) sits
+            //    DIRECTLY under the gauge, matching the WHOOP Stress Monitor screen.
+            if let daytime, !daytime.scored.isEmpty {
+                daytimeSection(daytime)
+                    .staggeredAppear(index: 1)
+            }
+
+            // 2b. ADVANCED HRV readouts (additive, on-demand). A separate, clearly-labelled card
             //     that appears only when at least one engine returned a value. It sits BELOW the
             //     hero and never alters the hero, the markers or the timeline.
             if hasAdvancedReadouts {
                 advancedReadoutsCard()
-                    .staggeredAppear(index: 1)
+                    .staggeredAppear(index: 2)
             }
 
-            // 2. Today's numbers — uniform tiles in one grid.
+            // 3. Today's numbers — uniform tiles in one grid.
             VStack(alignment: .leading, spacing: NoopMetrics.gap) {
                 SectionHeader("Today", overline: "Markers", trailing: String(localized: "vs 30-day baseline"))
                 tileGrid(model)
             }
-            .staggeredAppear(index: 1)
-
-            // 3. Today's intraday timeline — when in the day stress ran high, + a
-            //    passive Breathe suggestion when the recent hours stay elevated.
-            if let daytime, !daytime.scored.isEmpty {
-                daytimeSection(daytime)
-                    .staggeredAppear(index: 2)
-            }
+            .staggeredAppear(index: 3)
 
             // 4. Trend over the chosen window.
             trendSection(model)
-                .staggeredAppear(index: 3)
+                .staggeredAppear(index: 4)
 
             // 5. Transparency — how the number is built.
             methodologyCard(model)
-                .staggeredAppear(index: 4)
+                .staggeredAppear(index: 5)
         }
         // The sustained-stress suggestion opens the existing Breathe trainer in a sheet —
         // in-app and passive (no alert / notification), inheriting the app environment.
