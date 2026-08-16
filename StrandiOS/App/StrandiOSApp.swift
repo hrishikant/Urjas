@@ -262,6 +262,7 @@ private struct iOSRootView: View {
                     demo
                         .background(StrandPalette.surfaceBase.ignoresSafeArea())
                         .navigationBarTitleDisplayMode(.inline)
+                        .tabRouteDestinations()
                 }
             )
         }
