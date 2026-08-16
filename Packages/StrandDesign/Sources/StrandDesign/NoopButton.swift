@@ -129,7 +129,7 @@ public struct NoopButtonStyle: ButtonStyle {
             .font(StrandFont.headline.weight(.semibold))
             .tracking(NoopButtonMetrics.tracking)
             .lineLimit(1)
-            .minimumScaleFactor(0.9)
+            .minimumScaleFactor(0.8)
             .foregroundStyle(appearance.label)
             .frame(maxWidth: fullWidth ? .infinity : nil)
             .padding(.horizontal, NoopButtonMetrics.hPadding)

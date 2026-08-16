@@ -184,14 +184,25 @@ public enum DaytimeStress {
         //    beats can't fabricate variability). An hour with < minHourHRSamples HR is
         //    left unscored (noData) — never invented.
         struct HourAgg { let bucket: Int; let meanHR: Double?; let rmssd: Double?; let nHR: Int }
-        let orderedBuckets = hrByBucket.keys.sorted()
+        // Span EVERY waking hour-bucket from the first to the last observed bucket, so a waking
+        // hour with no HR/R-R becomes an explicit nil-level GAP in the timeline (not a silently
+        // dropped hour, as the `HourPoint.level == nil` contract promises). This lets the UI show
+        // gaps and — critically — lets the sustained-high walk in step 5 break ACROSS a data gap
+        // instead of hopping over it and fusing two separate HIGH stretches into one false run.
+        let observedBuckets = Set(hrByBucket.keys).union(rrByBucket.keys)
         var aggs: [HourAgg] = []
-        aggs.reserveCapacity(orderedBuckets.count)
-        for b in orderedBuckets {
-            let hrs = hrByBucket[b] ?? []
-            let mHR = hrs.count >= minHourHRSamples ? mean(hrs) : nil
-            let rrRes = HRVAnalyzer.analyze(rawRR: rrByBucket[b] ?? [])
-            aggs.append(HourAgg(bucket: b, meanHR: mHR, rmssd: rrRes.rmssd, nHR: hrs.count))
+        if let firstBucket = observedBuckets.min(), let lastBucket = observedBuckets.max() {
+            aggs.reserveCapacity((lastBucket - firstBucket) / bucketSeconds + 1)
+            var b = firstBucket
+            while b <= lastBucket {
+                if isWakingHour(b) {
+                    let hrs = hrByBucket[b] ?? []
+                    let mHR = hrs.count >= minHourHRSamples ? mean(hrs) : nil
+                    let rrRes = HRVAnalyzer.analyze(rawRR: rrByBucket[b] ?? [])
+                    aggs.append(HourAgg(bucket: b, meanHR: mHR, rmssd: rrRes.rmssd, nHR: hrs.count))
+                }
+                b += bucketSeconds
+            }
         }
 
         // 3) The day's OWN quiet reference: centre on the CALM end (the lower quartile of
@@ -241,10 +252,17 @@ public enum DaytimeStress {
                          dayMean: nil, peak: nil)
         }
 
-        // 5) Sustained-high flag: walk back from the latest SCORED hour while each is HIGH.
+        // 5) Sustained-high flag: from the latest SCORED hour, walk back over CONTIGUOUS timeline
+        //    hours. A gap (an unscored waking hour) OR any hour below the HIGH band breaks the run —
+        //    so two HIGH hours on either side of a data gap no longer fuse into a false "sustained".
+        //    Trailing not-yet-covered hours after the last scored hour don't reset the flag.
         var run = 0
-        for (_, lvl) in scored.reversed() {
-            if lvl >= highBandFloor { run += 1 } else { break }
+        if let lastScoredIdx = points.lastIndex(where: { $0.level != nil }) {
+            var i = lastScoredIdx
+            while i >= 0, let lvl = points[i].level, lvl >= highBandFloor {
+                run += 1
+                i -= 1
+            }
         }
         let sustained = run >= sustainedHours
 

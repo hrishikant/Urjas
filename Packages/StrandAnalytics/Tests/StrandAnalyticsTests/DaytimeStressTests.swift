@@ -72,6 +72,25 @@ final class DaytimeStressTests: XCTestCase {
         if let mean = r.dayMean { XCTAssertLessThan(mean, DaytimeStress.highBandFloor) }
     }
 
+    func testDataGapBreaksSustainedRun() {
+        // Two HIGH hours, a missing (no-data) waking hour, then two more HIGH hours. The gap
+        // must appear as an explicit unscored placeholder AND break the sustained run, so two
+        // separate tense stretches can never fuse into a false "sustained high" across the gap.
+        var hr: [HRSample] = []
+        for h in [8, 9, 10] { hr += hourHR(h, bpm: 58) }   // calm baseline
+        hr += hourHR(12, bpm: 122)
+        hr += hourHR(13, bpm: 126)
+        // hour 14 has NO data → an explicit waking gap
+        hr += hourHR(15, bpm: 127)
+        hr += hourHR(16, bpm: 130)
+        let r = DaytimeStress.analyze(hr: hr, rr: [])
+        let gap = r.hours.first { $0.hour == 14 }
+        XCTAssertNotNil(gap, "a missing waking hour must appear as an explicit gap")
+        XCTAssertNil(gap?.level, "the gap hour must be unscored (nil level)")
+        XCTAssertFalse(r.sustainedHigh, "a data gap must break the sustained-high run")
+        XCTAssertLessThan(r.sustainedRun, DaytimeStress.sustainedHours)
+    }
+
     func testSleepHoursInTheWindowDoNotShiftTheWakingTimeline() {
         // Regression: the calm reference is built from the WAKING hours that are actually
         // scored, not the whole 24 h. The analysis window always starts at local midnight, so
