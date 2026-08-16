@@ -161,9 +161,9 @@ final class WeeklyDigestTests: XCTestCase {
         let d = WeeklyDigestEngine.build(byMetric: [.charge: charge], anchorDay: "2026-06-13")
         XCTAssertFalse(d.focalPoints.isEmpty)
         let top = d.focalPoints[0]
-        XCTAssertTrue(top.contains("Charge"), "Expected Charge in: \(top)")
+        XCTAssertTrue(top.contains("Recovery"), "Expected Recovery in: \(top)")
         XCTAssertTrue(top.contains("up"), "Expected an upward move in: \(top)")
-        XCTAssertTrue(top.contains("good sign"), "Charge rising should read positively: \(top)")
+        XCTAssertTrue(top.contains("good sign"), "Recovery rising should read positively: \(top)")
     }
 
     func testRestingHRRiseReadsAsWorthALook() {
