@@ -201,6 +201,14 @@ struct LiquidTodayView: View {
     static func clampedDayOffset(current: Int, delta: Int, maxOffset: Int) -> Int {
         min(max(0, maxOffset), max(0, current + delta))
     }
+    /// Step the shown day (delta +1 = older, -1 = newer), clamped to [today, earliest]. Drives the
+    /// WHOOP-style ‹ › header arrows (same clamp + haptic path as the swipe gesture).
+    private func stepDay(_ delta: Int) {
+        let next = Self.clampedDayOffset(current: selectedDayOffset, delta: delta,
+                                         maxOffset: earliestDayOffset)
+        guard next != selectedDayOffset else { return }
+        withAnimation(StrandMotion.interactive) { selectedDayOffset = next }
+    }
     static func maxDayOffset(earliestDayKey: String?, todayKey: String) -> Int {
         guard let earliestKey = earliestDayKey,
               let earliest = dayKeyParser.date(from: earliestKey),
@@ -403,45 +411,73 @@ struct LiquidTodayView: View {
 
     private var scene: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                Button { showDayPicker = true } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(dayTitle)
-                            .font(StrandFont.rounded(28))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.4), radius: 10, y: 1)
-                        Text(dateLine)
-                            .font(StrandFont.caption)
-                            .foregroundStyle(.white.opacity(0.78))
-                            .shadow(color: .black.opacity(0.35), radius: 8, y: 1)
-                    }
-                    .contentShape(Rectangle())
+            // WHOOP-style top bar: profile avatar (leading), a centered ‹ DAY › date stepper whose
+            // arrows step days and whose label opens the calendar, and the strap battery + controls
+            // (trailing).
+            HStack(alignment: .center, spacing: 8) {
+                // Profile pic (the one set in Settings) → opens Settings, matching the classic Today.
+                Button { showSettings = true } label: {
+                    ProfileAvatarView(imageData: profile.avatarImageData, size: 34)
+                        .frame(width: 34, height: 34)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(dayTitle). Tap to pick a day, swipe to change day.")
-                .popover(isPresented: $showDayPicker) {
-                    DatePicker("", selection: dayPickerBinding, in: ...Repository.logicalDay(Date()),
-                               displayedComponents: [.date])
-                        .datePickerStyle(.graphical)
-                        .labelsHidden()
-                        .padding(12)
-                        .frame(minWidth: 320, minHeight: 360)
-                        .liquidPopoverAdaptation()
-                }
-                Spacer(minLength: 8)
-                HStack(spacing: 8) {
-                    // Profile pic (the one set in Settings) → opens Settings, matching the classic Today.
-                    Button { showSettings = true } label: {
-                        ProfileAvatarView(imageData: profile.avatarImageData, size: 34)
-                            .frame(width: 34, height: 34)
+                .buttonStyle(LiquidPressStyle())
+                .accessibilityLabel("Profile and settings")
+
+                Spacer(minLength: 4)
+
+                // Centered ‹ DAY › stepper: chevrons step days, the label opens the graphical picker.
+                HStack(spacing: 12) {
+                    Button { stepDay(1) } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(selectedDayOffset < earliestDayOffset
+                                             ? .white.opacity(0.9) : .white.opacity(0.25))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(LiquidPressStyle())
-                    .accessibilityLabel("Profile and settings")
+                    .disabled(selectedDayOffset >= earliestDayOffset)
+                    .accessibilityLabel("Previous day")
+
+                    Button { showDayPicker = true } label: {
+                        Text(dayTitle.uppercased())
+                            .font(StrandFont.overline).tracking(1.8)
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.4), radius: 8, y: 1)
+                            .lineLimit(1)
+                            .frame(minWidth: 74)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(dayTitle). Tap to pick a day, swipe to change day.")
+                    .popover(isPresented: $showDayPicker) {
+                        DatePicker("", selection: dayPickerBinding, in: ...Repository.logicalDay(Date()),
+                                   displayedComponents: [.date])
+                            .datePickerStyle(.graphical)
+                            .labelsHidden()
+                            .padding(12)
+                            .frame(minWidth: 320, minHeight: 360)
+                            .liquidPopoverAdaptation()
+                    }
+
+                    Button { stepDay(-1) } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(selectedDayOffset > 0
+                                             ? .white.opacity(0.9) : .white.opacity(0.25))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(LiquidPressStyle())
+                    .disabled(selectedDayOffset == 0)
+                    .accessibilityLabel("Next day")
+                }
+
+                Spacer(minLength: 4)
+
+                // Trailing controls: quick-add, sync, strap battery, customize.
+                HStack(spacing: 8) {
                     LiquidAddButton()
-                    // #245: the Liquid header shipped with no sync indication at all (B1) — add it next to
-                    // the battery button, matching the issue's own ask ("near the battery percentage") and
-                    // the layout Android already uses (its SyncStatusChip sits in the same row as the
-                    // battery ring).
                     LiquidSyncChip()
                     LiquidBatteryButton()
                     // One entry point for section order/visibility and both nested card editors.
