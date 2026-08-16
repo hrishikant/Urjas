@@ -1,0 +1,46 @@
+{
+  "name": "Ūrjas",
+  "identifier": "com.noopapp.urjas.source",
+  "subtitle": "Offline, on-device WHOOP-style health app",
+  "description": "Personal AltStore source for Ūrjas — a private, offline, on-device health & recovery app.",
+  "iconURL": "https://github.com/hrishikant/Urjas/releases/download/v1.0.0-altstore/urjas-icon.png",
+  "website": "https://github.com/hrishikant/Urjas",
+  "tintColor": "#1FB6A6",
+  "apps": [
+    {
+      "name": "Ūrjas",
+      "bundleIdentifier": "com.noopapp.noop",
+      "developerName": "hrishikant",
+      "subtitle": "Recovery, Strain, Sleep & Stress",
+      "localizedDescription": "Ūrjas is a private, offline, on-device health companion with WHOOP-style Recovery, Strain, Sleep and Stress insights — plus a Fitness Age panel, daily coaching suggestions and auto workout detection. All data stays on your device.",
+      "iconURL": "https://github.com/hrishikant/Urjas/releases/download/v1.0.0-altstore/urjas-icon.png",
+      "tintColor": "#1FB6A6",
+      "category": "healthcare-fitness",
+      "screenshotURLs": [],
+      "version": "9.3.1",
+      "versionDate": "2026-08-16",
+      "versionDescription": "Ūrjas sideload build: NOOP→Ūrjas brand sweep, WHOOP-style Fitness Age panel, contextual coaching suggestions, auto-workout card on the home screen, and QA fixes.",
+      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v1.0.0-altstore/Urjas.ipa",
+      "size": 16817775,
+      "minOSVersion": "17.0",
+      "versions": [
+        {
+          "version": "9.3.1",
+          "date": "2026-08-16",
+          "localizedDescription": "Ūrjas sideload build: NOOP→Ūrjas brand sweep, WHOOP-style Fitness Age panel, contextual coaching suggestions, auto-workout card on the home screen, and QA fixes.",
+          "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v1.0.0-altstore/Urjas.ipa",
+          "size": 16817775,
+          "minOSVersion": "17.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSHealthShareUsageDescription": "Read health metrics on-device.",
+          "NSBluetoothAlwaysUsageDescription": "Connect to your heart-rate strap."
+        }
+      }
+    }
+  ],
+  "news": []
+}
