@@ -754,14 +754,6 @@ private struct FitnessAgeSection: View {
         }
     }
 
-    /// The hero vessel's fill (0…1): younger reads FULLER. Maps a fitness age across a 20…70-year span
-    /// onto a full→empty gauge, so a 30-year fitness age fills high and a 65 fills low. Purely a visual
-    /// anchor for the gauge — the number and the ± band carry the real read-out.
-    private func fitnessAgeFraction(_ age: Double) -> Double {
-        let lo = 20.0, hi = 70.0
-        return max(0.05, min(1, (hi - age) / (hi - lo)))
-    }
-
     /// The younger/older-than-your-age subtitle as whole-phrase variants per count and direction, so
     /// translators see complete sentences (never a stitched plural or direction fragment).
     private func ageDeltaLine(years: Int, younger: Bool) -> String {
@@ -782,53 +774,38 @@ private struct FitnessAgeSection: View {
         let delta = Double(profile.age) - age        // +ve = fitness age younger than chronological
         let years = Int(abs(delta).rounded())
         let younger = delta >= 0
-        return VStack(alignment: .leading, spacing: NoopMetrics.space4) {
-            // Tap the hero body to open the full "fitness_age" trend.
+        return VStack(alignment: .leading, spacing: NoopMetrics.space5) {
+            // WHOOP-inspired cosmic orb hero. Tap the orb to open the full "fitness_age" trend.
             Button { fitnessSheet = .trend } label: {
-                HStack(alignment: .center, spacing: NoopMetrics.space5) {
-                    // The signature liquid gauge anchors the hero: a vessel tinted to the Charge world,
-                    // filled by how young the fitness age reads (younger = fuller), with the age counting
-                    // up over it. Same HeroScoreCell idiom as Today; taps fall through to the trend button.
-                    ZStack {
-                        LiquidVessel(value: fitnessAgeFraction(age), tint: StrandPalette.chargeColor, animated: true)
-                            .frame(width: 96, height: 96)
-                        CountUpNumber(value: Double(shown), font: StrandFont.rounded(30))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
-                            .allowsHitTesting(false)
-                    }
-                    VStack(alignment: .leading, spacing: NoopMetrics.space1) {
-                        Text("Fitness Age").strandOverline()
-                        Text(ageDeltaLine(years: years, younger: younger))
-                            .font(StrandFont.subhead)
-                            .foregroundStyle(younger ? StrandPalette.statusPositive : StrandPalette.statusWarning)
-                    }
-                    Spacer(minLength: 0)
-                    if let vo2 = vo2max {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("VO₂max").strandOverline()
-                            Text(String(format: "%.0f", vo2))
-                                .font(StrandFont.number(30))
-                                .foregroundStyle(StrandPalette.metricCyan)
-                            Text("ml/kg/min")
-                                .font(StrandFont.footnote)
-                                .foregroundStyle(StrandPalette.textTertiary)
-                        }
-                    }
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(StrandPalette.textTertiary)
-                        .accessibilityHidden(true)
-                }
-                .contentShape(Rectangle())
+                FitnessAgeOrb(age: shown, younger: younger,
+                              deltaLine: ageDeltaLine(years: years, younger: younger))
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(LiquidPressStyle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Fitness Age \(shown), \(ageDeltaLine(years: years, younger: younger)). Tap to see the trend.")
 
-            Text("± \(Int(FitnessAgeEngine.displayBandYears)) yr · a fitness comparison, not a biological age")
-                .font(StrandFont.footnote)
-                .foregroundStyle(StrandPalette.textTertiary)
+            // Pace-of-aging analog: an honest "where you sit vs your calendar age" scale (younger ↔ older),
+            // built from the SAME deltaYears the hero shows — not a fabricated biological pace metric.
+            FitnessDeltaScale(years: years, younger: younger)
+
+            // VO₂max readout + the honest ± band, sharing one row under the scale.
+            HStack(alignment: .firstTextBaseline) {
+                Text("± \(Int(FitnessAgeEngine.displayBandYears)) yr · a fitness comparison, not a biological age")
+                    .font(StrandFont.footnote)
+                    .foregroundStyle(StrandPalette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 12)
+                if let vo2 = vo2max {
+                    (Text("VO₂max ").font(StrandFont.overline).foregroundStyle(StrandPalette.textTertiary)
+                     + Text(String(format: "%.0f", vo2)).font(StrandFont.number(18)).foregroundStyle(StrandPalette.metricCyan))
+                        .fixedSize()
+                }
+            }
+
+            // Coaching insight, WHOOP "You've Got This" style — actionable, tied to the current delta.
+            FitnessInsightCard(younger: younger, years: years)
 
             Divider().overlay(StrandPalette.hairline)
 
@@ -877,6 +854,161 @@ private struct FitnessAgeSection: View {
         fitnessAge = faPts.last?.value
         vo2max = vo2Pts.last?.value
         loaded = true
+    }
+}
+
+// MARK: - WHOOP-inspired Fitness Age hero components
+
+/// The cosmic "orb" hero (WHOOP Healthspan-inspired): an organic disc with a teal→amber glowing rim,
+/// a subtle starfield, and the big Fitness Age number + younger/older-than-your-age line at its centre.
+/// The orb is purely aesthetic; the number, the delta line's colour, and the scale below carry meaning.
+private struct FitnessAgeOrb: View {
+    let age: Int
+    let younger: Bool
+    let deltaLine: String
+
+    private struct Star { let x: CGFloat; let y: CGFloat; let r: CGFloat; let o: Double }
+    /// Deterministic phyllotaxis (sunflower) scatter — even, natural, and identical every render.
+    private let stars: [Star] = (0..<48).map { i in
+        let a = Double(i) * 2.399963229728653          // golden angle
+        let rad = (Double(i) / 48.0).squareRoot() * 0.46
+        return Star(x: CGFloat(cos(a) * rad),
+                    y: CGFloat(sin(a) * rad),
+                    r: CGFloat(0.7 + Double((i * 7) % 5) * 0.35),
+                    o: 0.16 + Double((i * 13) % 7) / 7.0 * 0.62)
+    }
+
+    var body: some View {
+        let size: CGFloat = 236
+        ZStack {
+            // Glowing rim: a teal-top / amber-bottom fill revealed only near the edge by a radial mask,
+            // leaving the centre dark like WHOOP's Healthspan orb.
+            Circle()
+                .fill(LinearGradient(colors: [StrandPalette.metricCyan, StrandPalette.stressColor],
+                                     startPoint: .top, endPoint: .bottom))
+                .mask(
+                    RadialGradient(gradient: Gradient(stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: .clear, location: 0.46),
+                        .init(color: .white.opacity(0.85), location: 0.80),
+                        .init(color: .white, location: 0.93),
+                        .init(color: .clear, location: 1.0),
+                    ]), center: .center, startRadius: 0, endRadius: size / 2)
+                )
+                .blur(radius: 7)
+
+            // Starfield, clipped to the disc and screened so it reads as faint light, not dots.
+            ZStack {
+                ForEach(stars.indices, id: \.self) { i in
+                    Circle().fill(Color.white.opacity(stars[i].o))
+                        .frame(width: stars[i].r, height: stars[i].r)
+                        .offset(x: stars[i].x * size, y: stars[i].y * size)
+                }
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .blendMode(.screen)
+
+            VStack(spacing: 3) {
+                CountUpNumber(value: Double(age), font: StrandFont.rounded(58))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.4), radius: 6, y: 1)
+                Text("Fitness Age")
+                    .font(StrandFont.overline).tracking(StrandFont.overlineTracking)
+                    .foregroundStyle(StrandPalette.textSecondary)
+                Text(deltaLine)
+                    .font(StrandFont.subhead.weight(.semibold))
+                    .foregroundStyle(younger ? StrandPalette.statusPositive : StrandPalette.statusWarning)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// The "Fitness vs your age" scale — a WHOOP Pace-of-Aging-style tick strip. Younger reads left (good),
+/// older reads right; the marker sits at the current delta, centred at "your age". Honest: it's the same
+/// deltaYears the orb shows, not a separate rate-of-aging estimate.
+private struct FitnessDeltaScale: View {
+    let years: Int
+    let younger: Bool
+    private let maxYears: Double = 15
+
+    var body: some View {
+        let mag = min(Double(years), maxYears)
+        let frac = years == 0 ? 0.5
+            : (younger ? 0.5 - (mag / maxYears) * 0.5 : 0.5 + (mag / maxYears) * 0.5)
+        let valueColor = years == 0 ? StrandPalette.textPrimary
+            : (younger ? StrandPalette.statusPositive : StrandPalette.statusWarning)
+        let valueText = years == 0 ? String(localized: "On pace")
+            : (younger ? String(localized: "\(years) yr younger") : String(localized: "\(years) yr older"))
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Younger").font(StrandFont.footnote).foregroundStyle(StrandPalette.statusPositive)
+                Spacer()
+                Text(valueText).font(StrandFont.number(17)).foregroundStyle(valueColor)
+                Spacer()
+                Text("Older").font(StrandFont.footnote).foregroundStyle(StrandPalette.statusWarning)
+            }
+            Canvas { ctx, size in
+                let n = 41
+                for i in 0..<n {
+                    let x = size.width * CGFloat(i) / CGFloat(n - 1)
+                    let rect = CGRect(x: x - 0.7, y: 4, width: 1.4, height: 14)
+                    ctx.fill(Path(rect), with: .color(StrandPalette.textTertiary.opacity(0.35)))
+                }
+                let mx = size.width * frac
+                let marker = CGRect(x: mx - 1.6, y: 0, width: 3.2, height: 22)
+                ctx.fill(Path(roundedRect: marker, cornerRadius: 1.6), with: .color(.white))
+            }
+            .frame(height: 22)
+            HStack {
+                Text("−\(Int(maxYears)) yr").font(StrandFont.footnote).foregroundStyle(StrandPalette.textTertiary)
+                Spacer()
+                Text("Your age").font(StrandFont.footnote).foregroundStyle(StrandPalette.textTertiary)
+                Spacer()
+                Text("+\(Int(maxYears)) yr").font(StrandFont.footnote).foregroundStyle(StrandPalette.textTertiary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(years == 0 ? "On pace with your age" : valueText)
+    }
+}
+
+/// The coaching insight card (WHOOP "You've Got This" style): one actionable line tied to whether the
+/// fitness age reads younger or older than the wearer's calendar age.
+private struct FitnessInsightCard: View {
+    let younger: Bool
+    let years: Int
+
+    var body: some View {
+        let title = younger ? String(localized: "You've got this") : String(localized: "Room to improve")
+        let message = younger
+            ? String(localized: "Your fitness age is ahead of your years. Keep up regular Zone 2 cardio and steady sleep to hold your edge.")
+            : String(localized: "To lower your Fitness Age, build weekly Zone 2 cardio and keep a consistent sleep schedule. Small changes compound over weeks.")
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "lightbulb.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(StrandPalette.accent)
+                    .accessibilityHidden(true)
+                Text(title).font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
+            }
+            Text(message)
+                .font(StrandFont.subhead)
+                .foregroundStyle(StrandPalette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(NoopMetrics.space4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(StrandPalette.accent.opacity(0.10))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(StrandPalette.accent.opacity(0.22), lineWidth: 1))
+        )
     }
 }
 
