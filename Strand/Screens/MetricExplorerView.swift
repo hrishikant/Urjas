@@ -465,6 +465,9 @@ private struct MetricRow: View {
 struct MetricDetailView: View {
     let metric: MetricDescriptor
     @EnvironmentObject var repo: Repository
+    /// WHOOP-parity: the Overview/Sleep/Recovery/Strain segmented tab bar at the top of a score
+    /// detail. "Overview" pops back to Today (the day summary), the others push their own detail.
+    @Environment(\.dismiss) private var dismiss
     /// #430 parity: the detail carries the SAME backdrop as the screen that pushed it — the day-cycle sky
     /// when the setting is on, the plain canvas when off — so a Key-Metrics tile tap doesn't jar from the
     /// liquid Today's sky to a flat page. Same keys TodayView/LiquidTodayView gate on; "Sky behind cards"
@@ -681,6 +684,9 @@ struct MetricDetailView: View {
                     // Scenic hero: the metric's current value as a layered ring gauge (0–100
                     // scores) or a big SF-Rounded headline, floated over the domain's starfield,
                     // with the range pill. Then the frosted chart / stat tiles / correlations.
+                    if let tab = scoreTab {
+                        detailTabBar(current: tab)
+                    }
                     heroHeader(effectiveRange: effRange, windowed: win, windowFellBack: fellBack)
                     heroChart(effectiveRange: effRange, windowed: win, windowFellBack: fellBack)
                     statRow(effectiveRange: effRange, windowed: win)
@@ -740,7 +746,81 @@ struct MetricDetailView: View {
 
     // MARK: Scenic hero
 
-    /// The detail's opening hero: the metric's latest value as either the signature liquid
+    /// WHOOP-style score tabs. Only the three daily scores get the top segmented bar; every other
+    /// metric detail (HRV, RHR, …) renders without it.
+    enum ScoreTab: String, CaseIterable {
+        case overview, sleep, recovery, strain
+        init?(metricKey: String) {
+            switch metricKey {
+            case "recovery": self = .recovery
+            case "strain": self = .strain
+            case "sleep_performance": self = .sleep
+            default: return nil
+            }
+        }
+        var title: String {
+            switch self {
+            case .overview: return "Overview"
+            case .sleep: return "Sleep"
+            case .recovery: return "Recovery"
+            case .strain: return "Strain"
+            }
+        }
+    }
+
+    private var scoreTab: ScoreTab? { ScoreTab(metricKey: metric.key) }
+
+    /// The Overview / Sleep / Recovery / Strain segmented bar from the WHOOP detail screens. The
+    /// current tab is highlighted with an underline; the others navigate (Overview pops to Today).
+    @ViewBuilder
+    private func detailTabBar(current: ScoreTab) -> some View {
+        HStack(spacing: 0) {
+            ForEach(ScoreTab.allCases, id: \.self) { tab in
+                detailTab(tab, isCurrent: tab == current)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 2)
+    }
+
+    @ViewBuilder
+    private func detailTab(_ tab: ScoreTab, isCurrent: Bool) -> some View {
+        let content = VStack(spacing: 7) {
+            Text(tab.title.uppercased())
+                .font(StrandFont.overline).tracking(1.3)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .foregroundStyle(isCurrent ? StrandPalette.textPrimary : StrandPalette.textTertiary)
+            Rectangle()
+                .fill(isCurrent ? StrandPalette.accent : Color.clear)
+                .frame(height: 2)
+                .cornerRadius(1)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+
+        if isCurrent {
+            content
+        } else {
+            switch tab {
+            case .overview:
+                Button { dismiss() } label: { content }.buttonStyle(.plain)
+            case .sleep:
+                NavigationLink(value: TabRoute.sleep) { content }.buttonStyle(.plain)
+            case .recovery:
+                NavigationLink(value: TabRoute.metric("recovery")) { content }.buttonStyle(.plain)
+            case .strain:
+                NavigationLink(value: TabRoute.metric("strain")) { content }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// A one-line summary of the current metric for the WHOOP-style SHARE button.
+    private var shareSummary: String {
+        let v = latest.map { fmt($0.value) } ?? "—"
+        return "My \(metric.title): \(v)\(metric.unit.isEmpty ? "" : " " + metric.unit) — via Ūrjas"
+    }
+
+    /// The scenic hero: the metric's current value as either the signature liquid
     /// LiquidVessel gauge (for 0–100 scores, filled to the score with the number counting up over
     /// it) or a big count-up headline number, floated over a domain-tinted ScenicHeroBackground,
     /// with the category overline, the "as of" line, and the range pill. Mirrors TodayView's
@@ -809,6 +889,13 @@ struct MetricDetailView: View {
                             Text(asOf)
                                 .font(StrandFont.footnote)
                                 .foregroundStyle(StrandPalette.textTertiary)
+                            ShareLink(item: shareSummary) {
+                                Label("SHARE", systemImage: "square.and.arrow.up")
+                                    .font(StrandFont.overline).tracking(1.2)
+                                    .foregroundStyle(StrandPalette.textSecondary)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 2)
                         }
                         // One VoiceOver stop for the hero read-out (the vessel is decorative above).
                         .accessibilityElement(children: .ignore)
