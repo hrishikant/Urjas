@@ -92,9 +92,9 @@ struct BackupSyncView: View {
                     .disabled(busy)
                 #if os(iOS)
                 // #52: some iOS 26 users can't select a folder in the system picker (its "Open" button
-                // never fires). This backs up inside NOOP's own Files-visible folder instead — no picker.
+                // never fires). This backs up inside Ūrjas's own Files-visible folder instead — no picker.
                 if !FolderBackup.useInternalFolder {
-                    NoopButton("Use NOOP's own folder (browse in Files)",
+                    NoopButton("Use Ūrjas's own folder (browse in Files)",
                                systemImage: "iphone", kind: .tertiary) { useNoopFolder() }
                         .disabled(busy)
                 }
@@ -110,7 +110,7 @@ struct BackupSyncView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Daily auto-backup")
                             .font(StrandFont.body).foregroundStyle(StrandPalette.textPrimary)
-                        Text("Backs up to your folder about once a day and keeps the latest \(keep). On this platform it runs when you next open NOOP.")
+                        Text("Backs up to your folder about once a day and keeps the latest \(keep). On this platform it runs when you next open Ūrjas.")
                             .font(StrandFont.footnote).foregroundStyle(StrandPalette.textTertiary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -169,7 +169,7 @@ struct BackupSyncView: View {
         if FolderBackup.pickFolder() != nil { folderLabel = FolderBackup.folderLabel() }
         #else
         // #1000a: on iOS the folder picker has reportedly refused to enable its Select button, leaving
-        // the user with only Cancel and NOOP silently doing nothing. We can't tell a deliberate Cancel
+        // the user with only Cancel and Ūrjas silently doing nothing. We can't tell a deliberate Cancel
         // apart from that dead-button dead-end (both come back nil), so when no folder arrives we show
         // the screen's normal result alert with a concrete workaround instead of staying silent. Mildly
         // chatty on a genuine Cancel; honest and actionable when the picker is actually broken.
@@ -185,7 +185,7 @@ struct BackupSyncView: View {
                 // active, a cancelled picker changed nothing — and the button the message points at is
                 // hidden, so alerting here would send the user chasing a control that isn't shown.
                 alertTitle = String(localized: "No folder selected")
-                alertMessage = String(localized: "NOOP didn't get a folder back from the picker. If the Open button won't do anything, tap \"Use NOOP's own folder\" below to back up inside NOOP instead — you can read those backups from the Files app.")
+                alertMessage = String(localized: "Ūrjas didn't get a folder back from the picker. If the Open button won't do anything, tap \"Use Ūrjas's own folder\" below to back up inside Ūrjas instead — you can read those backups from the Files app.")
                 showAlert = true
             }
         }
@@ -193,13 +193,13 @@ struct BackupSyncView: View {
     }
 
     #if os(iOS)
-    // #52: picker-free fallback. Back up inside NOOP's own Files-visible folder (On My iPhone → NOOP →
+    // #52: picker-free fallback. Back up inside Ūrjas's own Files-visible folder (On My iPhone → Ūrjas →
     // Backups). No folder picker, no security-scoped bookmark — works even where the picker won't select.
     private func useNoopFolder() {
         FolderBackup.useNoopFolder()
         folderLabel = FolderBackup.folderLabel()
-        alertTitle = String(localized: "Using NOOP's folder")
-        alertMessage = String(localized: "Backups will be saved inside NOOP. Open the Files app → On My iPhone → NOOP → Backups to see them, or drag that folder into iCloud Drive to read it on your Mac. To use a different folder later, tap Change folder.")
+        alertTitle = String(localized: "Using Ūrjas's folder")
+        alertMessage = String(localized: "Backups will be saved inside Ūrjas. Open the Files app → On My iPhone → Ūrjas → Backups to see them, or drag that folder into iCloud Drive to read it on your Mac. To use a different folder later, tap Change folder.")
         showAlert = true
     }
     #endif
@@ -224,7 +224,7 @@ struct BackupSyncView: View {
         snapshots = FolderBackup.listSnapshots()
         if snapshots.isEmpty {
             alertTitle = String(localized: "No backups found")
-            alertMessage = String(localized: "There are no NOOP backups in your folder yet. Use Back up now first.")
+            alertMessage = String(localized: "There are no Ūrjas backups in your folder yet. Use Back up now first.")
             showAlert = true
         } else {
             showRestoreSheet = true
@@ -245,7 +245,7 @@ struct BackupSyncView: View {
                 switch result {
                 case .imported:
                     alertTitle = String(localized: "Restored")
-                    alertMessage = String(localized: "Fully quit and reopen NOOP to load it.")
+                    alertMessage = String(localized: "Fully quit and reopen Ūrjas to load it.")
                 case .failure(let m):
                     alertTitle = String(localized: "Restore problem"); alertMessage = m
                 case .cancelled, .exported:

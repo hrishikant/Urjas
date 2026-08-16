@@ -220,7 +220,7 @@ final class DeviceConfigReadProbeTests: XCTestCase {
                                                  candidateKeys: DeviceConfigReadProbe.oxygenCandidateKeys)
         guard let first = report.nextStep() else { return XCTFail("expected a first step") }
         XCTAssertEqual(first.opcode, 128)
-        XCTAssertEqual(first.key, "enable_r22_packets", "128 is discovered against a flag NOOP writes")
+        XCTAssertEqual(first.key, "enable_r22_packets", "128 is discovered against a flag Ūrjas writes")
         XCTAssertEqual(first.group, .discovery)
 
         // Nothing is known yet, so the second step is the other verb, not a value read.
@@ -490,7 +490,7 @@ final class DeviceConfigReadProbeTests: XCTestCase {
            1. enable_r22_packets              = '2' (0x32)
            2. whoop_live_hr_in_adv_ind_pkt    — no value (result=UNSUPPORTED(3))
 
-        Known feature-flag values (names NOOP already writes; values never read before) (1):
+        Known feature-flag values (names Ūrjas already writes; values never read before) (1):
            1. hr_ch_switching                 = '2' (0x32)
 
         Candidate oxygen keys — GUESSES, never observed on a wire or in any table (1):

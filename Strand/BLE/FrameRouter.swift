@@ -171,7 +171,7 @@ public final class FrameRouter {
                 } else if cmd.hasPrefix("SET_ALARM_TIME") {
                     // #34 (issue comment 2026-07-12): the strap's OWN answer to the arm we just sent — the
                     // accept/reject datum that was previously thrown away. armStrapAlarm logs "armed" the
-                    // instant the SET goes out, which only proves NOOP transmitted the frame; if the firmware
+                    // instant the SET goes out, which only proves Ūrjas transmitted the frame; if the firmware
                     // drops it the GET_ALARM_TIME readback then reads back epoch 0 (a silently-unpersisted
                     // alarm — the exact signature in this report). Logging the raw result byte lets a future
                     // report distinguish a strap that accepted the arm from one that rejected it. LOG-ONLY,

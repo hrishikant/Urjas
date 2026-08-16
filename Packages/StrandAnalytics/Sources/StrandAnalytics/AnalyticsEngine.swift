@@ -540,7 +540,7 @@ public enum AnalyticsEngine {
 
         // ── HRV & Autonomic nightly trace (#141) ──────────────────────────────
         // Per-5-min-window RMSSD tagged by the sleep stage at its center, then a night summary comparing
-        // NOOP's whole-night mean (what it reports) against a deep-only mean and a WHOOP-style
+        // Ūrjas's whole-night mean (what it reports) against a deep-only mean and a WHOOP-style
         // last-slow-wave-sleep value — so an "HRV reads ~2x higher than WHOOP" report shows WHICH stages
         // lift it, and lets a deep-sleep-windowed fix be validated before it ships. Reuses the SAME
         // sessionHrvWindows the value is built from (can't diverge). Zero cost when the sink is nil.
@@ -567,7 +567,7 @@ public enum AnalyticsEngine {
             let withR = allWin.filter { $0.rmssd != nil }
             let deepW = withR.filter { $0.stage == "deep" }
             let lastSws = SleepStager.lastDeepRun(allWin).filter { $0.rmssd != nil }
-            // `reported` is the value NOOP actually displays (duration-weighted session-mean-of-means);
+            // `reported` is the value Ūrjas actually displays (duration-weighted session-mean-of-means);
             // `wholeNight` is the pooled-window mean it equals on single-session nights and the apples-to-
             // apples baseline for the deepOnly/lastSWS comparison (all three are pooled window means).
             let reported = avgHRVDaily.map { "\(r2($0))ms" } ?? "nil"

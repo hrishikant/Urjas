@@ -14,7 +14,7 @@ public enum TrustTier: String, Sendable, Equatable, Codable {
 }
 
 /// The Oura inner-event-record tag. Raw value == the `type` byte (>= 0x41 per OURA_PROTOCOL.md s2.3).
-/// Only the tags NOOP actually decodes are enumerated; an unknown byte decodes to nil (honest).
+/// Only the tags Ūrjas actually decodes are enumerated; an unknown byte decodes to nil (honest).
 public enum OuraEventTag: UInt8, Sendable, CaseIterable, Codable {
     // --- Lifecycle / state (Tier A) ---
     case ringStart        = 0x41   // ring_start_ind, OURA_PROTOCOL.md s6.15

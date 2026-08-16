@@ -379,42 +379,42 @@
         }
       }
     },
-    "Charge out of date, last synced %@. Open NOOP on iPhone.": {
+    "Charge out of date, last synced %@. Open Ūrjas on iPhone.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ladung veraltet, zuletzt synchronisiert %@. Öffne NOOP auf dem iPhone."
+            "value": "Ladung veraltet, zuletzt synchronisiert %@. Öffne Ūrjas auf dem iPhone."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Charge out of date, last synced %@. Open NOOP on iPhone."
+            "value": "Charge out of date, last synced %@. Open Ūrjas on iPhone."
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Carga desatualizada, última sincronização %@. Abra o NOOP no iPhone."
+            "value": "Carga desatualizada, última sincronização %@. Abra o Ūrjas no iPhone."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Заряд устарел, последняя синхронизация %@. Откройте NOOP на iPhone."
+            "value": "Заряд устарел, последняя синхронизация %@. Откройте Ūrjas на iPhone."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Carga fuera de la fecha, última sincronizada %1$@. Abrir NOOP en iPhone."
+            "value": "Carga fuera de la fecha, última sincronizada %1$@. Abrir Ūrjas en iPhone."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Charge hors date, dernière synchronisation %1$@. Ouvrez NOOP sur iPhone."
+            "value": "Charge hors date, dernière synchronisation %1$@. Ouvrez Ūrjas sur iPhone."
           }
         }
       }
@@ -677,116 +677,116 @@
         }
       }
     },
-    "NOOP Charge": {
+    "Ūrjas Charge": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP Ladung"
+            "value": "Ūrjas Ladung"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP Charge"
+            "value": "Ūrjas Charge"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Carga de NOOP"
+            "value": "Carga de Ūrjas"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Carica NOOP"
+            "value": "Carica Ūrjas"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Carga NOOP"
+            "value": "Carga Ūrjas"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP Заряд"
+            "value": "Ūrjas Заряд"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP 能量"
+            "value": "Ūrjas 能量"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP 能量"
+            "value": "Ūrjas 能量"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Charge NOOP"
+            "value": "Charge Ūrjas"
           }
         }
       }
     },
-    "NOOP · open on iPhone": {
+    "Ūrjas · open on iPhone": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP · auf iPhone öffnen"
+            "value": "Ūrjas · auf iPhone öffnen"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP · open on iPhone"
+            "value": "Ūrjas · open on iPhone"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP · abrir no iPhone"
+            "value": "Ūrjas · abrir no iPhone"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP · откройте на iPhone"
+            "value": "Ūrjas · откройте на iPhone"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP · abierto en iPhone"
+            "value": "Ūrjas · abierto en iPhone"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP · ouvert sur iPhone"
+            "value": "Ūrjas · ouvert sur iPhone"
           }
         }
       }
     },
-    "NOOP. %@, %@, %@.": {
+    "Ūrjas. %@, %@, %@.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. %@, %@, %@."
+            "value": "Ūrjas. %@, %@, %@."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. %@, %@, %@."
+            "value": "Ūrjas. %@, %@, %@."
           }
         },
         "pt-PT": {
@@ -798,13 +798,13 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. %@, %@, %@."
+            "value": "Ūrjas. %@, %@, %@."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. %1$@, %2$@, %3$@."
+            "value": "Ūrjas. %1$@, %2$@, %3$@."
           }
         },
         "fr": {
@@ -815,162 +815,162 @@
         }
       }
     },
-    "NOOP. No data yet, open NOOP on your iPhone to sync.": {
+    "Ūrjas. No data yet, open Ūrjas on your iPhone to sync.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. Noch keine Daten, öffne NOOP auf deinem iPhone zum Synchronisieren."
+            "value": "Ūrjas. Noch keine Daten, öffne Ūrjas auf deinem iPhone zum Synchronisieren."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. No data yet, open NOOP on your iPhone to sync."
+            "value": "Ūrjas. No data yet, open Ūrjas on your iPhone to sync."
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "NÃO. Ainda não há dados, abra o NOOP no teu iPhone para tincronizar."
+            "value": "NÃO. Ainda não há dados, abra o Ūrjas no teu iPhone para tincronizar."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. Данных пока нет, откройте NOOP на iPhone для синхронизации."
+            "value": "Ūrjas. Данных пока нет, откройте Ūrjas на iPhone для синхронизации."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. Aún no hay datos, abra NOOP en su iPhone para sincronizar."
+            "value": "Ūrjas. Aún no hay datos, abra Ūrjas en su iPhone para sincronizar."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "- Oui. Pas encore de données, ouvrez NOOP sur votre iPhone pour synchroniser."
+            "value": "- Oui. Pas encore de données, ouvrez Ūrjas sur votre iPhone pour synchroniser."
           }
         }
       }
     },
-    "NOOP. Scores out of date, last synced %@. Open NOOP on iPhone to refresh.": {
+    "Ūrjas. Scores out of date, last synced %@. Open Ūrjas on iPhone to refresh.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. Werte veraltet, zuletzt synchronisiert %@. Öffne NOOP auf dem iPhone zum Aktualisieren."
+            "value": "Ūrjas. Werte veraltet, zuletzt synchronisiert %@. Öffne Ūrjas auf dem iPhone zum Aktualisieren."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. Scores out of date, last synced %@. Open NOOP on iPhone to refresh."
+            "value": "Ūrjas. Scores out of date, last synced %@. Open Ūrjas on iPhone to refresh."
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "NÃO. Pontuações desatualizadas, última sincronização %@. Abra o NOOP no iPhone para atualizar."
+            "value": "NÃO. Pontuações desatualizadas, última sincronização %@. Abra o Ūrjas no iPhone para atualizar."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. Показатели устарели, последняя синхронизация %@. Откройте NOOP на iPhone, чтобы обновить."
+            "value": "Ūrjas. Показатели устарели, последняя синхронизация %@. Откройте Ūrjas на iPhone, чтобы обновить."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP. Resultados fuera de la fecha, último sincronizado %1$@. Abra NOOP en iPhone para refrescarse."
+            "value": "Ūrjas. Resultados fuera de la fecha, último sincronizado %1$@. Abra Ūrjas en iPhone para refrescarse."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "- Oui. Les scores sont dépassés, le dernier %1$@ synchronisé. Ouvrez NOOP sur iPhone pour vous rafraîchir."
+            "value": "- Oui. Les scores sont dépassés, le dernier %1$@ synchronisé. Ouvrez Ūrjas sur iPhone pour vous rafraîchir."
           }
         }
       }
     },
-    "No data, open NOOP on iPhone": {
+    "No data, open Ūrjas on iPhone": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keine Daten, öffne NOOP auf dem iPhone"
+            "value": "Keine Daten, öffne Ūrjas auf dem iPhone"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No data, open NOOP on iPhone"
+            "value": "No data, open Ūrjas on iPhone"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sem dados, abra o NOOP no iPhone"
+            "value": "Sem dados, abra o Ūrjas no iPhone"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Нет данных, откройте NOOP на iPhone"
+            "value": "Нет данных, откройте Ūrjas на iPhone"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "No hay datos, abra NOOP en iPhone"
+            "value": "No hay datos, abra Ūrjas en iPhone"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pas de données, ouvrir NOOP sur iPhone"
+            "value": "Pas de données, ouvrir Ūrjas sur iPhone"
           }
         }
       }
     },
-    "Open NOOP": {
+    "Open Ūrjas": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "NOOP öffnen"
+            "value": "Ūrjas öffnen"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Open NOOP"
+            "value": "Open Ūrjas"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Abrir NOOP"
+            "value": "Abrir Ūrjas"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Открыть NOOP"
+            "value": "Открыть Ūrjas"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Open NOOP"
+            "value": "Open Ūrjas"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ouvrir NOOP"
+            "value": "Ouvrir Ūrjas"
           }
         }
       }

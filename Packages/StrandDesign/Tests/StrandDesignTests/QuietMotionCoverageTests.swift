@@ -166,7 +166,7 @@ final class QuietMotionCoverageTests: XCTestCase {
     }
 
     /// Posing the picture still while the sensor keeps running saves nothing. `onDisappear` is not
-    /// called when the app is backgrounded, and NOOP declares background modes, so without an
+    /// called when the app is backgrounded, and Ūrjas declares background modes, so without an
     /// explicit app-boundary stop a decorative 60 Hz device-motion feed ran all day behind the lock
     /// screen.
     func testDecorativeMotionSensorStopsAtTheAppBoundary() throws {

@@ -332,7 +332,7 @@ final class SourceCoordinator: ObservableObject {
 
     /// Build the EXPERIMENTAL Oura source (Oura Ring gen 3/4/5) for `id`, driven by the clean-room
     /// `OuraProtocol.OuraDriver`. Decoded raw signals (HR / IBI / HRV / SpO2 / temp / sleep-phase / battery)
-    /// ride the SAME `LiveState` + persist channels as the other sources, so NOOP scores the Oura day with
+    /// ride the SAME `LiveState` + persist channels as the other sources, so Ūrjas scores the Oura day with
     /// its OWN Charge/Rest exactly like a WHOOP day, while Oura's encrypted readiness/sleep scores are never
     /// read or surfaced. The ring generation is recovered from the registry row's `model` string via
     /// `OuraRingGen.from(model:)`; the 16-byte install key is read from the Keychain via `OuraKeyStore`
@@ -359,7 +359,7 @@ final class SourceCoordinator: ObservableObject {
             persistSleepSession: { [storeHandle] session in
                 // The ring-PROVIDED hypnogram night, upserted under the ring's OWN id (the imported/measured
                 // side, NOT the "-noop" computed sibling) so SleepMerge's imported-over-computed rule makes
-                // Oura's SleepNet staging win over NOOP's sparse-motion computed night (#325).
+                // Oura's SleepNet staging win over Ūrjas's sparse-motion computed night (#325).
                 Task { if let store = await storeHandle() { _ = try? await store.upsertSleepSessions([session], deviceId: id) } }
             },
             log: straplog,
@@ -367,7 +367,7 @@ final class SourceCoordinator: ObservableObject {
             onModel: { [registry] model in registry.setModel(id, model: model) },   // #772: correct a name-guessed gen
             onSerial: { [weak self] serial in self?.adoptOuraSerial(currentId: id, serial: serial) },  // #771
             adoptIntent: adoptIntent)
-        if adoptIntent { straplog("Oura: adopt consent granted - this session may install NOOP's key") }
+        if adoptIntent { straplog("Oura: adopt consent granted - this session may install Ūrjas's key") }
         ouraSource = source   // the published typed handle for the adopt mirror (same object as activeSource)
         return source
     }

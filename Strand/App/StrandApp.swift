@@ -16,7 +16,7 @@ struct StrandApp: App {
         DemoDayHarness.applyLaunchArgsIfNeeded()
         #endif
         // Foreground presentation: without a delegate, macOS suppresses a notification's banner while the
-        // app is frontmost, so a reminder tested with NOOP open would show nothing. Mirrors iOS.
+        // app is frontmost, so a reminder tested with Ūrjas open would show nothing. Mirrors iOS.
         UNUserNotificationCenter.current().delegate = NotificationPresenter.shared
     }
 

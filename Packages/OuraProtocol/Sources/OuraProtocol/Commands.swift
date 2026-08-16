@@ -21,7 +21,7 @@ public enum OuraCommands {
     // The SpO2 feature id. Per OURA_PROTOCOL.md s7.1.
     public static let featureSpO2: UInt8 = 0x04
     // The real-steps feature id. Server-flag-gated (activity/real_steps, default off), so it is never
-    // emitted for an offline NOOP-only ring. Per OURA_PROTOCOL.md s7.1 / s7.3 [open_oura-feat].
+    // emitted for an offline Ūrjas-only ring. Per OURA_PROTOCOL.md s7.1 / s7.3 [open_oura-feat].
     public static let featureRealSteps: UInt8 = 0x0B
 
     // MARK: - Pre-auth / identity (unauthenticated OK)
@@ -63,7 +63,7 @@ public enum OuraCommands {
     /// `req_sync_time(secs, 0)` ([oura-proto]/[oura-link], OURA_PROTOCOL.md §5.4/§9.2). Supersedes an
     /// earlier reverse-engineered guess (`token` + `unix_s/256` in 3 bytes + `0xF6` trailer) that did NOT
     /// match the native client. `tzHalfHours` defaults to 0 (UTC), exactly as the reference client sends;
-    /// NOOP does its own LOCAL-day bucketing downstream regardless of what the ring is told here.
+    /// Ūrjas does its own LOCAL-day bucketing downstream regardless of what the ring is told here.
     /// On-device proven (2026-07-08..10): sending this on connect makes the ring emit the 0x42 anchor.
     public static func syncTime(unixSeconds: Int, tzHalfHours: Int8 = 0) -> OuraCommand {
         let secs = UInt64(bitPattern: Int64(unixSeconds))

@@ -12,13 +12,13 @@ import AppKit
 #endif
 
 /// Detects a marginal Bluetooth radio that can't sustain the WHOOP 4 R10/R11 raw realtime stream
-/// (#80). On a flaky radio (2016 Mac / OpenCore) the link dies the *instant* NOOP arms that
+/// (#80). On a flaky radio (2016 Mac / OpenCore) the link dies the *instant* Ūrjas arms that
 /// high-bandwidth burst, then the auto-rescan reconnects, re-arms, and dies again — an endless loop.
 ///
 /// The tell is a CONNECTION TIMEOUT that lands shortly after we armed realtime: arm → die → rescan →
 /// arm → die. We don't trip on a single drop (links die for benign reasons), but on >= `tripThreshold`
 /// CONSECUTIVE arm-then-quick-timeout cycles. Once tripped, the caller skips arming R10/R11 on the next
-/// connect and relies on the independent low-bandwidth 0x2A37 standard HR profile, which NOOP already
+/// connect and relies on the independent low-bandwidth 0x2A37 standard HR profile, which Ūrjas already
 /// subscribes — live HR survives on a radio that otherwise couldn't, and even if 0x2A37 stays silent the
 /// arm/die loop stops. Pure + value-typed so the decision is unit-testable without a CoreBluetooth seam.
 struct MarginalRadioDetector {
@@ -182,13 +182,13 @@ struct BondRefusalGiveUp {
     /// UUID (per-install, not the hardware address), which carries no PII. Pure so a fixture pins it. No
     /// em-dash (project rule). Byte-identical to the Android twin.
     static func epitaphLine(refusals: Int, opaqueId: String) -> String {
-        "Bond epitaph: the strap [\(opaqueId)] refused the encrypted bond \(refusals)x in a row with no successful bond - giving up auto-reconnect to stop hammering it. It is almost certainly held by the official WHOOP app or a stale phone pairing. Free it (close the WHOOP app, put the strap in pairing mode, forget it in Bluetooth settings) then reconnect in NOOP."
+        "Bond epitaph: the strap [\(opaqueId)] refused the encrypted bond \(refusals)x in a row with no successful bond - giving up auto-reconnect to stop hammering it. It is almost certainly held by the official WHOOP app or a stale phone pairing. Free it (close the WHOOP app, put the strap in pairing mode, forget it in Bluetooth settings) then reconnect in Ūrjas."
     }
 
     /// #747: the honest user-facing hint shown when auto-reconnect pauses. Tells them WHY it stopped and how
     /// to get going again. Pure; no em-dash. Byte-identical to the Android twin.
     static func pausedHint() -> String {
-        "NOOP stopped retrying because your strap keeps refusing to pair. It is likely still held by the official WHOOP app, or your phone is holding an old pairing. Close the WHOOP app, put the strap in pairing mode (tap until the LEDs flash blue), and if it is listed in your Bluetooth settings choose Forget This Device. Then tap Connect to try again."
+        "Ūrjas stopped retrying because your strap keeps refusing to pair. It is likely still held by the official WHOOP app, or your phone is holding an old pairing. Close the WHOOP app, put the strap in pairing mode (tap until the LEDs flash blue), and if it is listed in your Bluetooth settings choose Forget This Device. Then tap Connect to try again."
     }
 
     /// #750: a short OPAQUE token from a CoreBluetooth-local peripheral UUID for the epitaph. The CB UUID is
@@ -1148,8 +1148,8 @@ public final class BLEManager: NSObject, ObservableObject {
             log("Found existing \(model.displayName) connection \(p.identifier) — attaching")
             preparePeripheral(p)
             // Attach OUR OWN session even when CoreBluetooth reports the strap .connected. On Apple
-            // platforms an LE link is shared system-wide, so a strap held by the WHOOP app, a prior NOOP
-            // session, or the OS itself reads .connected while NOOP has NO session of its own yet. The old
+            // platforms an LE link is shared system-wide, so a strap held by the WHOOP app, a prior Ūrjas
+            // session, or the OS itself reads .connected while Ūrjas has NO session of its own yet. The old
             // .connected branch flipped state.connected = true and jumped straight to discovery + live
             // notifications, which then silently delivered nothing: the UI claimed "connected" but no data
             // ever flowed (#689). Routing through connect(_:) instead fires didConnect almost immediately
@@ -1193,11 +1193,11 @@ public final class BLEManager: NSObject, ObservableObject {
     }
 
     /// #78: fully RELEASE a strap when the user removes it from the Devices screen. Archiving the registry
-    /// row alone left the strap connected — NOOP kept re-grabbing it (the 3s disconnect→reconnect timer, the
+    /// row alone left the strap connected — Ūrjas kept re-grabbing it (the 3s disconnect→reconnect timer, the
     /// targeted-connect pin, and iOS state restoration ALL still pointed at it), so it stayed connected and
     /// the user could never put it into pairing mode to re-pair (the #78 deadlock: a WHOOP that's connected
     /// can't show its blue pairing LEDs). Stop auto-reconnect, drop the live link, and clear the targeting +
-    /// restoration references that point at this strap so NOOP lets go for good — until the user deliberately
+    /// restoration references that point at this strap so Ūrjas lets go for good — until the user deliberately
     /// reconnects (which clears `intentionalDisconnect` again via connect()).
     public func forgetDevice(_ peripheralId: String?) {
         let target = peripheralId.flatMap { UUID(uuidString: $0) }
@@ -1852,12 +1852,12 @@ public final class BLEManager: NSObject, ObservableObject {
     /// type-43 flood, which extractStreams ignores — the data comes from the next periodic offload.
     /// Stop an offload that is part-way through, at the user's request.
     ///
-    /// NOOP has been able to START a drain since day one (`sendHistoricalData`) with no way to stop it:
+    /// Ūrjas has been able to START a drain since day one (`sendHistoricalData`) with no way to stop it:
     /// a session ran to HISTORY_COMPLETE, the backfill timeout, or a dropped link. On a strap with a
     /// large banked history that is a long time to be stuck, and the only escape was walking out of
     /// Bluetooth range.
     ///
-    /// NOTHING IS LOST. The strap frees banked records when NOOP acks a HISTORY_END, so records already
+    /// NOTHING IS LOST. The strap frees banked records when Ūrjas acks a HISTORY_END, so records already
     /// acked are persisted and records not yet acked stay in flash and re-offload on the next sync. This
     /// is a stop, not a trim, and no cursor moves.
     ///
@@ -2242,7 +2242,7 @@ public final class BLEManager: NSObject, ObservableObject {
     /// #324/#928: the post-sync banner for a strap whose clock is set in the FUTURE. Unlike the
     /// "clock lost / not banking" case (`bankedNothing`), this strap DOES bank records every pass — but
     /// its RTC relatched to a future base, so every banked timestamp reads ahead of the wall clock and
-    /// NOOP won't import them (importing would misfile the night days or years ahead). The existing
+    /// Ūrjas won't import them (importing would misfile the night days or years ahead). The existing
     /// clock-lost banner is gated on empty syncs and never fires here, so this failure mode was silent
     /// (#324). Returns the user-facing string when the strap-reported newest record is future-dated
     /// beyond the 48 h skew allowance (`BackfillContinuation.isFutureDatedNewest`), else nil. Pure and
@@ -2251,7 +2251,7 @@ public final class BLEManager: NSObject, ObservableObject {
     nonisolated static func futureDatedStrapBanner(strapNewestTs: Int?, wallNowUnix: Int) -> String? {
         guard BackfillContinuation.isFutureDatedNewest(strapNewestTs, wallNowUnix: wallNowUnix) else { return nil }
         return "Synced, but your strap's clock is set in the future - its banked history is dated ahead of "
-            + "today, so NOOP can't trust those timestamps and didn't import them (importing them would "
+            + "today, so Ūrjas can't trust those timestamps and didn't import them (importing them would "
             + "misfile your data days or years ahead). Fully charge the strap to 100% and power-cycle it so "
             + "its clock re-syncs, then reconnect."
     }
@@ -2464,7 +2464,7 @@ public final class BLEManager: NSObject, ObservableObject {
             // The R22 SET_CONFIG writes go over the encrypted command channel, so the live-HR-only
             // shortcut (`bonded` true, `encryptedBond` false on a 5/MG still owned by the official app,
             // #69/#266) can't carry them. Require the genuine bond, or the writes silently fail (#269).
-            log("Deep-data: needs the full encrypted bond, not the live-HR-only link. Close the official WHOOP app, put the strap in pairing mode, and bond it to NOOP first — ignored."); return
+            log("Deep-data: needs the full encrypted bond, not the live-HR-only link. Close the official WHOOP app, put the strap in pairing mode, and bond it to Ūrjas first — ignored."); return
         }
         guard state.worn else {
             log("Deep-data: the R22 stream is on-wrist only — put the strap ON, then try again."); return
@@ -2503,7 +2503,7 @@ public final class BLEManager: NSObject, ObservableObject {
     /// feature flags and report, per key, the value the strap actually stores afterwards.
     ///
     /// **Why this exists.** The Settings copy has promised since #174 that the R22 unlock is "reversible",
-    /// and that was true about the hardware and false about the app: NOOP shipped an enable button and no
+    /// and that was true about the hardware and false about the app: Ūrjas shipped an enable button and no
     /// way back, so the only routes out were the official WHOOP app or a factory reset. This closes that.
     ///
     /// **Why it is staged rather than sixteen writes.** `'0'` is the confirmed off value in the
@@ -2536,7 +2536,7 @@ public final class BLEManager: NSObject, ObservableObject {
         // off-value writes on `r22DisableRun != nil` instead, which is the state that is actually about this
         // operation. (#174)
         guard state.connected, state.encryptedBond else {
-            log("Deep-data disable: needs the full encrypted bond, not the live-HR-only link. Close the official WHOOP app, put the strap in pairing mode, and bond it to NOOP first — ignored."); return
+            log("Deep-data disable: needs the full encrypted bond, not the live-HR-only link. Close the official WHOOP app, put the strap in pairing mode, and bond it to Ūrjas first — ignored."); return
         }
         guard r22DisableRun == nil else {
             log("Deep-data disable: a disable run is already walking its plan — ignored."); return
@@ -2737,7 +2737,7 @@ public final class BLEManager: NSObject, ObservableObject {
     }
 
     /// Restart the connected strap (REBOOT_STRAP / opcode 29, empty body). Non-destructive: the strap keeps
-    /// its stored data and re-advertises after boot, but the BLE link drops and NOOP auto-reconnects. Gated
+    /// its stored data and re-advertises after boot, but the BLE link drops and Ūrjas auto-reconnects. Gated
     /// to a connected + bonded strap; user-initiated and confirmation-gated at the call site (DevicesView).
     ///
     /// Emits a full debug trail to the strap log so a reboot is diagnosable end to end:
@@ -2863,7 +2863,7 @@ public final class BLEManager: NSObject, ObservableObject {
     /// `START_FF_KEY_EXCHANGE(117)` for the count, then `SEND_NEXT_FF(118)` repeatedly (its body is a
     /// cursor, not an index) until the strap's own end marker. NOTHING is written: no `SET_FF_VALUE(120)`,
     /// no `SET_DEVICE_CONFIG_VALUE(119)`, no value of any kind — this writes command frames purely to read,
-    /// exactly like the Oura `spo2_status` / `realsteps_status` probes NOOP already ships
+    /// exactly like the Oura `spo2_status` / `realsteps_status` probes Ūrjas already ships
     /// (`Packages/OuraProtocol/…/Commands.swift`). `GET_FF_VALUE(128)` is deliberately NOT sent (its reply's
     /// value field is reported unreliable — see `FeatureFlagProbe`).
     ///
@@ -2950,7 +2950,7 @@ public final class BLEManager: NSObject, ObservableObject {
     ///
     /// NOTHING is written: no `SET_FF_VALUE(120)`, no `SET_DEVICE_CONFIG_VALUE(119)`, no value of any
     /// kind — this writes command frames purely to read, exactly like the Oura `spo2_status` /
-    /// `realsteps_status` probes NOOP already ships (`Packages/OuraProtocol/…/Commands.swift`).
+    /// `realsteps_status` probes Ūrjas already ships (`Packages/OuraProtocol/…/Commands.swift`).
     ///
     /// **Both target opcodes may simply be unimplemented.** The probe spends one round-trip per verb
     /// establishing that before it does anything else, and a clean "neither verb is served" is a useful
@@ -2975,7 +2975,7 @@ public final class BLEManager: NSObject, ObservableObject {
         }
         deviceConfigReport = DeviceConfigReadProbeReport(
             family: selectedModel.deviceFamily,
-            // The flag names come from NOOP's own R22 sequence — never restated here.
+            // The flag names come from Ūrjas's own R22 sequence — never restated here.
             knownFlagKeys: Whoop5Config.enableR22Sequence.map(\.name),
             candidateKeys: DeviceConfigReadProbe.oxygenCandidateKeys)
         state.deviceConfigProbe = BLEManager.deviceConfigProbeWaiting
@@ -3748,7 +3748,7 @@ public final class BLEManager: NSObject, ObservableObject {
     /// path doesn't re-set it (wire observation; mirrors Android WhoopBleClient.armStrapAlarm).
     /// Either way the strap will buzz at `date` even if the app is backgrounded or force-quit
     /// (event STRAP_DRIVEN_ALARM_EXECUTED=57). This is the only alarm path: the strap fires at
-    /// the fixed time — NOOP has no light-sleep early-wake layer.
+    /// the fixed time — Ūrjas has no light-sleep early-wake layer.
     ///
     /// EXPERIMENTAL / UNCONFIRMED on 5/MG (same posture as the Android client): the byte-identical
     /// Android rev-4 frame has been ACKed by a real 5/MG when arming, but a strap-driven wake fire
@@ -3820,7 +3820,7 @@ public final class BLEManager: NSObject, ObservableObject {
         // evening short-horizon arm (same code path, same commands, no day/night branch anywhere in this
         // function) did not. One firmware-side explanation that would fit every reported case: the
         // physical alarm haptic might only fire while the strap's OWN sleep/rest detection considers the
-        // wearer sleep-adjacent, independent of anything NOOP sends. This doesn't prove or fix that — it's
+        // wearer sleep-adjacent, independent of anything Ūrjas sends. This doesn't prove or fix that — it's
         // a free read of state already tracked live, logged so the next reported failure (ideally an
         // evening one) can be compared against the resting HR of the successful arms already on file. `nil`
         // (no key written) means no HR had streamed yet at arm time, not zero.
@@ -4035,9 +4035,9 @@ extension BLEManager: @preconcurrency CBCentralManagerDelegate {
         // toggle that already reads "on" from a PRIOR build's grant may not carry over — the
         // message needs to tell the user to re-toggle it, not just check that it's on.
         #if os(macOS)
-        state.lastSyncError = "NOOP isn't allowed to use Bluetooth. Open System Settings → Privacy & Security → Bluetooth — if NOOP is already listed there, toggle it off and back on (a new NOOP build needs a fresh grant), then quit and reopen NOOP."
+        state.lastSyncError = "Ūrjas isn't allowed to use Bluetooth. Open System Settings → Privacy & Security → Bluetooth — if Ūrjas is already listed there, toggle it off and back on (a new Ūrjas build needs a fresh grant), then quit and reopen Ūrjas."
         #else
-        state.lastSyncError = "NOOP isn't allowed to use Bluetooth. Open iPhone Settings → NOOP → Bluetooth — if it's already on, toggle it off and back on, then quit and reopen NOOP."
+        state.lastSyncError = "Ūrjas isn't allowed to use Bluetooth. Open iPhone Settings → Ūrjas → Bluetooth — if it's already on, toggle it off and back on, then quit and reopen Ūrjas."
         #endif
         log("Bluetooth permission not granted (unauthorized) — cannot scan or connect")
         radioStateErrorShown = true
@@ -4070,7 +4070,7 @@ extension BLEManager: @preconcurrency CBCentralManagerDelegate {
         unauthorizedSettleWork = nil
         guard central.state == .poweredOn else {
             // #280: a non-poweredOn radio state used to be a SILENT return — the strap log showed only
-            // "Central state: 3" and the UI just read "not connected", so a user whose Mac had denied NOOP
+            // "Central state: 3" and the UI just read "not connected", so a user whose Mac had denied Ūrjas
             // Bluetooth (.unauthorized == raw 3) had nothing explaining why no strap was ever found. This is
             // the #280 case: an unsigned universal rebuild (8.4.0) gets a new code identity, so the earlier
             // macOS Bluetooth TCC grant no longer applied and CoreBluetooth reported .unauthorized before
@@ -4317,7 +4317,7 @@ extension BLEManager: @preconcurrency CBCentralManagerDelegate {
             }
             if state.reconnectGuide == nil {
                 state.reconnectGuide = """
-                Your strap keeps connecting and then dropping a second later. This is almost always a stale Bluetooth pairing - usually after a WHOOP firmware update, or the official WHOOP app holding the strap. NOOP works fine once it's re-paired:
+                Your strap keeps connecting and then dropping a second later. This is almost always a stale Bluetooth pairing - usually after a WHOOP firmware update, or the official WHOOP app holding the strap. Ūrjas works fine once it's re-paired:
 
                 1. Quit the official WHOOP app (or turn off Bluetooth on that phone).
                 2. Open System Settings → Bluetooth and Forget your WHOOP if it's listed.
@@ -4469,7 +4469,7 @@ extension BLEManager: @preconcurrency CBCentralManagerDelegate {
         // The strap wiped its bond (a firmware update, or the official WHOOP app re-bonding it). macOS keeps
         // re-presenting the now-stale pairing key, so every reconnect loops on this same error with no
         // recovery and no user guidance. Surface an actionable re-pair guide instead of failing silently —
-        // NOOP itself works fine on the new firmware once the stale bond is cleared. (5/MG firmware reset, 2026-06)
+        // Ūrjas itself works fine on the new firmware once the stale bond is cleared. (5/MG firmware reset, 2026-06)
         // Connection test mode: a failed connect is part of the reconnect churn the tester is chasing.
         // Gated zero-cost; diagnostic only - the backoff/guide logic below is unchanged.
         if TestCentre.active(.connection) {
@@ -4483,7 +4483,7 @@ extension BLEManager: @preconcurrency CBCentralManagerDelegate {
         }
         if let cbErr = error as? CBError, cbErr.code == .peerRemovedPairingInformation {
             state.reconnectGuide = """
-            Your strap's Bluetooth pairing was reset - usually by a WHOOP firmware update, or the official WHOOP app reconnecting. NOOP works fine on the new firmware; you just need to re-pair:
+            Your strap's Bluetooth pairing was reset - usually by a WHOOP firmware update, or the official WHOOP app reconnecting. Ūrjas works fine on the new firmware; you just need to re-pair:
 
             1. Quit the official WHOOP app (or turn off Bluetooth on that phone).
             2. Open System Settings → Bluetooth and Forget “WHOOP MG” if it's listed.
@@ -4753,7 +4753,7 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
                     // counting silently; recordRefusal() below stays false (latched), so no epitaph spam.
                     log("WHOOP 5/MG: bond still refused during a paused-state probe (streak \(bondRefusalStreak)) - the give-up stays latched")
                 } else if bondRefusalStreak >= 2 {
-                    state.pairingHint = "NOOP can see your strap but it's refusing to pair - it's likely still bonded to the official WHOOP app, or your phone is holding an old pairing. To fix it: (1) fully close the WHOOP app, (2) on a 5.0/MG, tap the band repeatedly until the LEDs flash blue (pairing mode), (3) if your strap is listed under iPhone Settings → Bluetooth, tap it and choose Forget This Device, then reconnect in NOOP."
+                    state.pairingHint = "Ūrjas can see your strap but it's refusing to pair - it's likely still bonded to the official WHOOP app, or your phone is holding an old pairing. To fix it: (1) fully close the WHOOP app, (2) on a 5.0/MG, tap the band repeatedly until the LEDs flash blue (pairing mode), (3) if your strap is listed under iPhone Settings → Bluetooth, tap it and choose Forget This Device, then reconnect in Ūrjas."
                     log("WHOOP 5/MG: bond refused \(bondRefusalStreak)× with no successful bond — the strap is refusing the encrypted link (WHOOP app holds it, or a stale iOS pairing). Surfacing pairing-mode + forget-device guidance (#78).")
                 } else {
                     log("WHOOP 5/MG: bond write refused (insufficient) — retrying once; will surface pairing-mode guidance if it persists (#78).")

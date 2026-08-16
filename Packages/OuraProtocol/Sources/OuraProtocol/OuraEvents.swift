@@ -31,7 +31,7 @@ public struct OuraHR: Equatable, Sendable, Codable {
 }
 
 /// One decoded HRV (RMSSD-derived) sample from the ring's own 0x5D tag (OURA_PROTOCOL.md s6.9).
-/// NOOP also reconstructs RMSSD itself from the IBI streams for its own scoring; this is the ring's
+/// Ūrjas also reconstructs RMSSD itself from the IBI streams for its own scoring; this is the ring's
 /// open HRV tag, NOT Oura's encrypted readiness score.
 public struct OuraHRV: Equatable, Sendable, Codable {
     public let ringTimestamp: UInt32
@@ -76,7 +76,7 @@ public struct OuraBattery: Equatable, Sendable, Codable {
 /// The 2-bit sleep-phase code values, per open_oura's VALIDATED `decode_sleep_phases` mapping
 /// (events.rs `PHASE = ["deep", "light", "rem", "awake"]`): 0=deep, 1=light, 2=rem, 3=awake.
 ///
-/// CORRECTION (2026-07-11): NOOP previously mapped 0=awake/2=deep/3=rem from the same unverified doc
+/// CORRECTION (2026-07-11): Ūrjas previously mapped 0=awake/2=deep/3=rem from the same unverified doc
 /// as the rest of s6.12. Two live captures contradict that: phase records decoded AT WAKE (wearer
 /// demonstrably awake) carry code 3 — awake under open_oura's mapping, "REM" under the old one. The
 /// raw code is what persists (`stage.rawValue`); only these LABELS changed, so stored rows are stable.
@@ -119,7 +119,7 @@ public struct OuraMotion: Equatable, Sendable, Codable {
 /// plus an orientation code and a high-intensity count (open_oura `decode_motion`, clean-room fact
 /// citation; OURA_PROTOCOL.md s6.13). This is the SAME shape as a WHOOP 4.0 gravity sample — an averaged
 /// `(x, y, z)` vector, NOT a per-sample raw accel — so it can feed the same motion pipeline. Axis values
-/// are the signed record bytes scaled ×8 (open_oura's convention); the LSB→g scale for NOOP's stager is
+/// are the signed record bytes scaled ×8 (open_oura's convention); the LSB→g scale for Ūrjas's stager is
 /// a downstream calibration, so this struct carries the ring's raw ×8 integers, unscaled and honest.
 public struct OuraMotionEvent: Equatable, Sendable, Codable {
     public let ringTimestamp: UInt32
@@ -158,7 +158,7 @@ public struct OuraState: Equatable, Sendable, Codable {
 /// A decoded feature-status read reply (the `0x2F` sub-op `0x21` response): the ring's own report of a
 /// feature's mode / status / state / subscription. Read-only diagnostic — used to confirm the server-flag
 /// gate on SpO2 (`0x04`) / real_steps (`0x0b`): a `subscription == 0` with no emitted records is the ring
-/// saying "the cloud has not enabled this", which NOOP cannot override offline. Never scored, never stored.
+/// saying "the cloud has not enabled this", which Ūrjas cannot override offline. Never scored, never stored.
 public struct OuraFeatureStatus: Equatable, Sendable, Codable {
     public let feature: Int
     public let mode: Int

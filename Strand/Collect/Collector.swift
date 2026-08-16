@@ -128,7 +128,7 @@ final class Collector {
         ingest(frame: frame, parsed: parseFrame(frame, family: family))
     }
 
-    /// #423: persist the WHOOP 5/MG raw-IMU offload buffer NOOP already decodes for the deep-buffer log —
+    /// #423: persist the WHOOP 5/MG raw-IMU offload buffer Ūrjas already decodes for the deep-buffer log —
     /// the queryable twin of that (table-less) diagnostics line. Same `noopPuffinCapture` gate; only the
     /// 1244-B 6-axis buffer decodes (rawColumns nil otherwise). Fire-and-forget into the store, bounded by
     /// a rolling retention prune. Raw i16, no downstream consumer yet. Twin of Android

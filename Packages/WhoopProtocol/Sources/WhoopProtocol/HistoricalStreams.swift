@@ -10,7 +10,7 @@ let expectedUnhandledHistoricalTypes: Set<String> = ["METADATA", "CONSOLE_LOGS"]
 
 /// Shared plausibility bounds for a type-47 record's own unix timestamp (#547). A WHOOP strap with a
 /// bad clock/flash (repeated trim=0xFFFFFFFF no-cursor) emits records whose decoded unix is scattered
-/// garbage — far-past (2024/2029), a bogus 2027=1827642881, and even FUTURE dates. NOOP used to trust
+/// garbage — far-past (2024/2029), a bogus 2027=1827642881, and even FUTURE dates. Ūrjas used to trust
 /// these verbatim, so one polluted ~12h block got re-attributed to every day-window and a future-dated
 /// record surfaced as the "last night" carry-over. We now reject any record whose ts isn't near "now".
 ///

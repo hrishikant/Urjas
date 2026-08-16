@@ -85,7 +85,7 @@ struct TestCentreView: View {
             Button("Clear", role: .destructive) { clearScheduledExports() }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This deletes every scheduled strap-log and raw-capture file NOOP has saved. This can't be undone.")
+            Text("This deletes every scheduled strap-log and raw-capture file Ūrjas has saved. This can't be undone.")
         }
         .alert(infoTitle, isPresented: $showInfo) {
             Button("OK", role: .cancel) { }
@@ -274,7 +274,7 @@ struct TestCentreView: View {
                         .font(StrandFont.subhead).foregroundStyle(StrandPalette.textPrimary)
                 }
                 .toggleStyle(.switch).tint(StrandPalette.accent)
-                Text("When NOOP reconstructs heart rate from the WHOOP 5/MG v26 optical waveform (the seconds the strap stored no HR), refine the autocorrelation peak with a parabolic sub-lag fit so the estimate is not quantized to roughly 16 bpm steps near a high HR. It only fills seconds the strap never reported; it never overrides a stored HR. 5/MG only, off by default.")
+                Text("When Ūrjas reconstructs heart rate from the WHOOP 5/MG v26 optical waveform (the seconds the strap stored no HR), refine the autocorrelation peak with a parabolic sub-lag fit so the estimate is not quantized to roughly 16 bpm steps near a high HR. It only fills seconds the strap never reported; it never overrides a stored HR. 5/MG only, off by default.")
                     .font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -356,12 +356,12 @@ struct TestCentreView: View {
             await model.repo.refresh()
         }
         infoTitle = String(localized: "Charge baseline recalibrating")
-        infoMessage = String(localized: "NOOP will re-learn your baseline from tonight's data onward. Your history is kept, and it takes a few nights to settle.")
+        infoMessage = String(localized: "Ūrjas will re-learn your baseline from tonight's data onward. Your history is kept, and it takes a few nights to settle.")
         showInfo = true
     }
 
     /// The manual "Clear scheduled exports" action (#650): wipes every scheduled strap-log / raw-capture
-    /// file NOOP has dropped into Documents, regardless of the retention setting, then confirms via the
+    /// file Ūrjas has dropped into Documents, regardless of the retention setting, then confirms via the
     /// same info alert the other export actions use.
     private func clearScheduledExports() {
         let removed = ScheduledDebugExport.clearScheduledExports()
@@ -395,7 +395,7 @@ struct TestCentreView: View {
         if let url {
             infoTitle = String(localized: "Strap log exported")
             #if os(iOS)
-            infoMessage = String(localized: "Saved \(url.lastPathComponent) to NOOP's folder in the Files app.")
+            infoMessage = String(localized: "Saved \(url.lastPathComponent) to Ūrjas's folder in the Files app.")
             #else
             infoMessage = String(localized: "Saved \(url.lastPathComponent) to your Documents folder.")
             #endif

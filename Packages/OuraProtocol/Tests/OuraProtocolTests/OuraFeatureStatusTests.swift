@@ -1,7 +1,7 @@
 import XCTest
 @testable import OuraProtocol
 
-/// The read-only feature-status diagnostic: NOOP asks the ring its SpO2 (0x04) / real_steps (0x0b) feature
+/// The read-only feature-status diagnostic: Ūrjas asks the ring its SpO2 (0x04) / real_steps (0x0b) feature
 /// status with the SAME `0x20` read verb as `dhr_read`, decodes the `0x21` reply, and logs it once. It
 /// confirms — from the ring itself — the server-flag gate that keeps those features off for an offline ring.
 /// It must NEVER enable anything (no `0x22` set-mode) and must NOT disturb the live-HR triplet.

@@ -395,7 +395,7 @@ struct RootView: View {
     private var brand: some View {
         HStack(spacing: 8) {
             // In-app logo: the open recovery-ring mark so the wordmark reads as a true lockup
-            // (README logo system — mark + "NOOP"). Flat gold gradient, low glow per the v3 restraint.
+            // (README logo system — mark + "Ūrjas"). Flat gold gradient, low glow per the v3 restraint.
             BrandMark(size: 22)
             Text("Ūrjas")
                 .font(StrandFont.rounded(20, weight: .bold))
@@ -485,7 +485,7 @@ struct RootView: View {
     }
 }
 
-/// The NOOP logo mark — an **open recovery ring** (~80% arc, round caps, starting at 12 o'clock)
+/// The Ūrjas logo mark — an **open recovery ring** (~80% arc, round caps, starting at 12 o'clock)
 /// with a **solid centre core dot** ("on-device core"), per the README logo system. Rendered in the
 /// gold gradient and kept deliberately flat / low-glow for the v3 Titanium & Gold restraint. Drawn
 /// purely from design tokens so it tracks the palette. Sized to optically x-height-match the wordmark.

@@ -175,7 +175,7 @@ public enum StrainScorer {
     /// `maxSampleGapMin`; the last reuses the gap before it.
     ///
     /// #950: TRIMP used to take ONE duration inferred from the first two timestamps and multiply the whole
-    /// zone-weight sum by it. NOOP's HR stream is not uniformly spaced — live Bluetooth arrives ~1 s apart,
+    /// zone-weight sum by it. Ūrjas's HR stream is not uniformly spaced — live Bluetooth arrives ~1 s apart,
     /// banked 5/MG history ~30 s, and dropouts leave larger holes — so whichever gap happened to be first
     /// set the scale for the entire window. Worse, a workout window and the day that contains it start at
     /// different samples, so they picked different factors and the two Effort numbers stopped being

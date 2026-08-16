@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// The source whose inputs produced one persisted NOOP-computed score.
+/// The source whose inputs produced one persisted Ūrjas-computed score.
 /// Natural key: (computed device namespace, day, metric key).
 public struct ScoreInputProvenanceRow: Equatable, Codable, Sendable {
     public let day: String

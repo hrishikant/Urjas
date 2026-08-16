@@ -240,7 +240,7 @@ struct InsightsView: View {
                     if behaviours.isEmpty {
                         // No journal yet, explain, without dead-ending on a paid export.
                         NoopCard {
-                            Text("Log behaviours above. After a few days of answers, NOOP ranks how each one moves your recovery, HRV and sleep. Importing a WHOOP export (which includes its journal) backfills history instantly.")
+                            Text("Log behaviours above. After a few days of answers, Ūrjas ranks how each one moves your recovery, HRV and sleep. Importing a WHOOP export (which includes its journal) backfills history instantly.")
                                 .font(StrandFont.subhead)
                                 .foregroundStyle(StrandPalette.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -560,7 +560,7 @@ struct InsightsView: View {
                     Text("Run a clean personal test")
                         .font(StrandFont.headline)
                         .foregroundStyle(StrandPalette.textPrimary)
-                    Text("Pick one behaviour you log, one outcome, and a short window. NOOP compares the days you log the behaviour against your behaviour-free days before the start.")
+                    Text("Pick one behaviour you log, one outcome, and a short window. Ūrjas compares the days you log the behaviour against your behaviour-free days before the start.")
                         .font(StrandFont.subhead)
                         .foregroundStyle(StrandPalette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1142,7 +1142,7 @@ struct InsightsView: View {
             SectionHeader("Activity Cost", overline: "What each activity costs your recovery")
             if activityCosts.isEmpty {
                 NoopCard {
-                    Text("Tag a few sessions of the same activity and NOOP will learn its personal recovery cost.")
+                    Text("Tag a few sessions of the same activity and Ūrjas will learn its personal recovery cost.")
                         .font(StrandFont.subhead)
                         .foregroundStyle(StrandPalette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)

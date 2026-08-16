@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 /// Backup & Sync (folder destination) - the Apple twin of the Android `BackupSync`. Writes the full
 /// `.noopbak` snapshot (the existing `DataBackup` format) into a user-chosen folder, on demand and as
 /// an on-launch daily catch-up. Point that folder at a Google Drive / iCloud / Dropbox client and you
-/// get automatic off-device backup with no in-app cloud account - NOOP only writes a local file; the
+/// get automatic off-device backup with no in-app cloud account - Ūrjas only writes a local file; the
 /// sync client does the upload.
 ///
 /// `BackupSync` holds only the PURE, unit-tested filename / selection logic (no I/O, no state) so it is
@@ -160,8 +160,8 @@ enum FolderBackup {
 
     /// #52: on some iOS 26 builds the system folder picker's "Open" button never enables/fires, so users
     /// can't choose an external folder at all (three reports, works for one). This opt-in falls back to
-    /// NOOP's OWN Documents/Backups folder — already exposed in Files (UIFileSharingEnabled +
-    /// LSSupportsOpeningDocumentsInPlace) under "On My iPhone → NOOP" — so Backup & Sync works with zero
+    /// Ūrjas's OWN Documents/Backups folder — already exposed in Files (UIFileSharingEnabled +
+    /// LSSupportsOpeningDocumentsInPlace) under "On My iPhone → Ūrjas" — so Backup & Sync works with zero
     /// dependence on the picker. No security-scoped bookmark is involved (the folder is inside our own
     /// sandbox), so `resolveFolder`/`saveFolder`'s scoped-access brackets simply no-op for it. The user
     /// can drag that folder into iCloud Drive to read backups on the Mac; a first-class iCloud container
@@ -171,7 +171,7 @@ enum FolderBackup {
         set { UserDefaults.standard.set(newValue, forKey: internalKey) }
     }
 
-    /// Opt into backing up inside NOOP's own Files-visible folder (see `useInternalFolder`). Returns the
+    /// Opt into backing up inside Ūrjas's own Files-visible folder (see `useInternalFolder`). Returns the
     /// folder URL so the caller can refresh its label. iOS-only in practice; harmless elsewhere.
     @discardableResult
     static func useNoopFolder() -> URL? {
@@ -179,7 +179,7 @@ enum FolderBackup {
         return internalFolderURL()
     }
 
-    /// NOOP's own Files-visible backup folder: `<sandbox>/Documents/Backups`, created on first use.
+    /// Ūrjas's own Files-visible backup folder: `<sandbox>/Documents/Backups`, created on first use.
     /// Returns nil only if Documents can't be located (never in practice).
     private static func internalFolderURL() -> URL? {
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
@@ -191,7 +191,7 @@ enum FolderBackup {
     /// A short, human label for the chosen folder, or nil if none chosen. The internal fallback gets a
     /// friendly name instead of the raw "Backups" path component.
     static func folderLabel() -> String? {
-        if useInternalFolder { return String(localized: "NOOP (in Files)") }
+        if useInternalFolder { return String(localized: "Ūrjas (in Files)") }
         return resolveFolder()?.lastPathComponent
     }
 
@@ -378,7 +378,7 @@ enum FolderBackup {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = String(localized: "Choose")
-        panel.message = String(localized: "Choose a folder for NOOP backups (for example a Google Drive or iCloud folder).")
+        panel.message = String(localized: "Choose a folder for Ūrjas backups (for example a Google Drive or iCloud folder).")
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         saveFolder(url)
         return url

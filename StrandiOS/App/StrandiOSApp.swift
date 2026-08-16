@@ -50,7 +50,7 @@ struct StrandiOSApp: App {
         // never fires; the macOS timer, foreground catch-up, and "Run now" already work without it.
         ScheduledDebugExport.register()
         // Foreground presentation: without a delegate, iOS suppresses a notification's banner while the app
-        // is open, so a user testing the wind-down reminder with NOOP foregrounded sees nothing. Register
+        // is open, so a user testing the wind-down reminder with Ūrjas foregrounded sees nothing. Register
         // before the first scene so any early-fired notification is presented.
         UNUserNotificationCenter.current().delegate = NotificationPresenter.shared
         let model = AppModel()

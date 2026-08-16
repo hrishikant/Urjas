@@ -152,7 +152,7 @@ public extension OuraFraming {
     /// exactly `len - 4` payload bytes when the notification carries them, otherwise whatever payload
     /// bytes are present (`frame.get(2..2+len).unwrap_or(frame[2..])`). The `len` field is NOT required
     /// to equal the notification length; open_oura tolerates that disagreement, and honoring it is what
-    /// keeps NOOP from (a) minting phantom records out of a "too-small" len's leftover bytes or (b)
+    /// keeps Ūrjas from (a) minting phantom records out of a "too-small" len's leftover bytes or (b)
     /// swallowing the next notification on a "too-big" len. Returns nil only when the 4 timestamp bytes
     /// are not even present (`count < 6`) or `len < 4` (a record must cover its timestamp) — a genuinely
     /// unusable frame, never a guess (honest-data invariant). Per OURA_PROTOCOL.md s2.3.

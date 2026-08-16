@@ -53,7 +53,7 @@ enum DebugDataDiagnostics {
         #if os(iOS)
         // #52: iOS Backup & Sync folder-picker health. When users report "won't let me pick a folder",
         // this pins the failure stage: "cancelled"/"never used" ⇒ the picker's Open button never fired
-        // (an iOS-side picker issue — the in-app "Use NOOP's own folder" fallback sidesteps it);
+        // (an iOS-side picker issue — the in-app "Use Ūrjas's own folder" fallback sidesteps it);
         // "picked" + a FAILED flag ⇒ a returned folder failed to bookmark HERE (our bug).
         let pickEvent = d.string(forKey: "backupPicker.lastEvent") ?? "never used"
         let pickAt = d.double(forKey: "backupPicker.lastEventAt")
@@ -63,7 +63,7 @@ enum DebugDataDiagnostics {
             let bmOk = d.bool(forKey: "backupPicker.lastBookmarkOk")
             lines.append("             scoped-access \(scoped ? "ok" : "FAILED"), bookmark \(bmOk ? "ok" : "FAILED")")
         }
-        lines.append("Backup mode:  \(FolderBackup.useInternalFolder ? "NOOP's own folder (#52 fallback)" : (FolderBackup.hasFolder ? "external folder" : "none chosen"))")
+        lines.append("Backup mode:  \(FolderBackup.useInternalFolder ? "Ūrjas's own folder (#52 fallback)" : (FolderBackup.hasFolder ? "external folder" : "none chosen"))")
         #endif
         #if os(macOS)
         // #278: macOS Backup & Sync restore-list health. When a user reports "restore shows no files",
@@ -310,7 +310,7 @@ enum DebugDataDiagnostics {
                 line += " · strap clock at arm \(skew > 0 ? "+" : "")\(mag)"
             }
             // #34: live HR at arm, logged only to test whether the strap's own sleep/rest detection (not
-            // anything NOOP sends) gates the physical haptic — see the doc comment on recordAlarmArm.
+            // anything Ūrjas sends) gates the physical haptic — see the doc comment on recordAlarmArm.
             if let hr = d.object(forKey: "alarm.lastArmHeartRate") as? Int {
                 line += " · HR \(hr) bpm at arm"
             }

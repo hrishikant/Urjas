@@ -1,5 +1,5 @@
 //  LiquidTodayView.swift
-//  NOOP · Liquid design language — the Today screen, rebuilt in the liquid finish.
+//  Ūrjas · Liquid design language — the Today screen, rebuilt in the liquid finish.
 //
 //  This is the FULL Today, re-created faithfully from the locked mockup
 //  (scratchpad/liquid-metal-home.html): sky title + record/add/battery controls,
@@ -26,7 +26,7 @@ struct LiquidTodayView: View {
     // only publishes connect/discovery state, never HR. Injected at the app roots beside .environmentObject(model).
     @EnvironmentObject var ble: BLEManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Low Power Mode — and the in-app "Reduce motion in NOOP" toggle — pose the sky still too, the
+    /// Low Power Mode — and the in-app "Reduce motion in Ūrjas" toggle — pose the sky still too, the
     /// behaviour the comment on the sky branch below has always described. Neither has a SwiftUI
     /// environment key, hence the shared monitor.
     @ObservedObject private var motion = NoopMotionState.shared
@@ -280,6 +280,10 @@ struct LiquidTodayView: View {
                         case .journal: if selectedDayOffset == 0 { JournalReminderCard() }
                         }
                     }
+                    // Opt-in "looks like a workout?" suggestion (default OFF). Renders only when the
+                    // Settings toggle is on AND the detector finds a recent unsaved, un-dismissed window.
+                    // Today only, matching the classic TodayView placement.
+                    if selectedDayOffset == 0 { AutoWorkoutCard() }
                     dataSourcesSection
                     Color.clear.frame(height: 90) // floating tab-bar clearance
                 }
@@ -492,7 +496,7 @@ struct LiquidTodayView: View {
                     .accessibilityLabel("Customize Today")
                 }
             }
-            // Subtle NOOP wordmark in the sky between header and hero. Perfectly centred (a letter row has
+            // Subtle Ūrjas wordmark in the sky between header and hero. Perfectly centred (a letter row has
             // no trailing tracking gap the way `Text(...).tracking()` does), with a tap easter egg.
             // #today-layout: the hero + Start-session row moved OUT of the scene into the reorderable
             // section block below. The wordmark's bottom pad (10) + the section VStack's 12 spacing keeps
@@ -1184,7 +1188,7 @@ struct LiquidTodayView: View {
         // Window all read the same signal. Rest reuses the already-loaded sleep_performance series.
         let sparkCutoff = Repository.localDayKey(cal.date(byAdding: .day, value: -13, to: dayStart) ?? dayStart)
         let sparkRows = daysSnapshot.filter { $0.day >= sparkCutoff && $0.day <= selectedDayKey }
-        // #616: imported-first calorie spark (the day's imported Apple active energy ?: NOOP's on-device
+        // #616: imported-first calorie spark (the day's imported Apple active energy ?: Ūrjas's on-device
         // estimate) over the window, so a Health-Connect / Apple-only calorie user gets a trend too —
         // matching the imported-first VALUE. Union of imported days + strap-row days. Mirrors Android's
         // caloriesSpark (windowed caloriesByDay).
@@ -1344,7 +1348,7 @@ struct LiquidTodayView: View {
     private var stepsDetailSource: String { stepsDetailMetric?.source ?? "my-whoop" }
 
     // #616: calories resolved IMPORTED-FIRST (the day's imported Apple active energy — the figure these
-    // surfaces already showed — else NOOP's on-device HR estimate `activeKcalEst`) — one number across the
+    // surfaces already showed — else Ūrjas's on-device HR estimate `activeKcalEst`) — one number across the
     // tile, card and the detail it taps to. Mirrors the steps precedence above.
     private var caloriesCount: Double? {
         importedActiveKcalDay ?? displayDay?.activeKcalEst
@@ -1441,9 +1445,9 @@ private struct PullOffsetKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
-// MARK: - NOOP wordmark (centred, with a tap easter egg)
+// MARK: - Ūrjas wordmark (centred, with a tap easter egg)
 
-/// The subtle NOOP wordmark. Built as a row of letters (not `Text(...).tracking()`, which adds a
+/// The subtle Ūrjas wordmark. Built as a row of letters (not `Text(...).tracking()`, which adds a
 /// trailing gap after the last glyph and pushes the word off-centre), so it sits DEAD centre. Tap it
 /// for a little easter egg: it plays one of several random one-shot animations — wiggle, shake, flip,
 /// spin, bounce, or a jelly squash — with a light haptic.

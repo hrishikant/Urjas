@@ -80,10 +80,10 @@ enum NoopLocalAccessMain {
       noop-local-access codex-config [--db-path /absolute/path/to/whoop.sqlite]
 
     Environment:
-      NOOP_DB_PATH    Explicit NOOP SQLite path. Optional; otherwise the official macOS app container is used.
+      NOOP_DB_PATH    Explicit Ūrjas SQLite path. Optional; otherwise the official macOS app container is used.
       NOOP_BUNDLE_ID  Optional non-default bundle id. Not needed for the official app.
       NOOP_DEVICE_ID  Optional source id. Defaults to my-whoop.
 
-    The MCP server is read-only, stdio-based, and exposes bounded local NOOP data tools.
+    The MCP server is read-only, stdio-based, and exposes bounded local Ūrjas data tools.
     """
 }

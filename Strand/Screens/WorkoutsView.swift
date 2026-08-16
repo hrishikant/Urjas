@@ -13,7 +13,7 @@ private struct WorkoutRecoveryTrendPoint: Identifiable, Equatable {
 
 // MARK: - Workouts
 //
-// The activity log, instrument-grade and uniform. Built ONLY from the locked Noop
+// The activity log, instrument-grade and uniform. Built ONLY from the locked Ūrjas
 // component system (NoopMetrics / NoopCard / StatTile / SectionHeader /
 // SegmentedPillControl / SourceBadge) so every card, tile and row lines up:
 //
@@ -792,7 +792,7 @@ struct WorkoutsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// A hero stat whose number ticks up to its value on appear/change — the NOOP signature for a big
+    /// A hero stat whose number ticks up to its value on appear/change — the Ūrjas signature for a big
     /// count. Same layout as `heroStat`; used for the plain session count.
     private func heroCountStat(_ title: String, value: Double,
                                format: @escaping (Double) -> String, tint: Color) -> some View {

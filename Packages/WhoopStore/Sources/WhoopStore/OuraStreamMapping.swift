@@ -10,9 +10,9 @@ import OuraProtocol
 ///
 /// Honest-data invariant (hard): we surface only the ring's decoded raw signals + its own open event
 /// tags (HR/IBI/HRV/SpO2/temp/sleep-phase/battery). We NEVER read or surface Oura's encrypted readiness
-/// or sleep scores. NOOP computes its own Charge/Rest downstream from these per-device streams. The
+/// or sleep scores. Ūrjas computes its own Charge/Rest downstream from these per-device streams. The
 /// `OuraHRV` 0x5D tag is the ring's OWN RMSSD-derived HRV signal (OURA_PROTOCOL.md s6.9), not a readiness
-/// score; NOOP also independently reconstructs RMSSD from the IBI streams for its own scoring.
+/// score; Ūrjas also independently reconstructs RMSSD from the IBI streams for its own scoring.
 ///
 /// Timestamping: the live source streams a batch and stamps every row at the arrival wall-clock `ts`
 /// (unix seconds), exactly as `StandardHRMapping.samples(...at:)` does. The decoded events carry only a
@@ -72,7 +72,7 @@ public enum OuraStreamMapping {
                 // (b1/b2) plus the sample's relative time offset are surfaced under units-neutral keys.
                 // We do NOT mint an `rmssd_ms` here: the int8 b1/b2 byte -> millisecond scaling is NOT
                 // Tier-A (OURA_PROTOCOL.md s6.9 leaves it unpinned), so labelling a raw byte as a
-                // millisecond RMSSD would fabricate units (honest-data invariant). NOOP's own scoring
+                // millisecond RMSSD would fabricate units (honest-data invariant). Ūrjas's own scoring
                 // RMSSD is reconstructed from the IBI stream (`rr`), never from this open tag. Keys and
                 // values are IDENTICAL to the Kotlin twin (OuraStreamMapping.kt) so both platforms emit
                 // byte-for-byte the same OURA_HRV payload.
