@@ -101,6 +101,22 @@ final class AppModel: ObservableObject {
     /// Android's `ActiveWorkout.gpsEnabled`.
     private var activeWorkoutIsGps = false
 
+    // MARK: - Auto-start (opt-in): begin a LIVE recording on sustained elevated HR, for ANY sport.
+    // The auto-detector's Today card only ever *suggested* a past bout after the fact; users expect a
+    // strap to *start recording by itself* when they begin working out (parity with a watch's
+    // auto-detect). This live monitor watches the smoothed HR stream and, when it holds the elevated
+    // gate (restingHR + margin) for `autoStartSustainMin`, starts a generic session seeded from the
+    // onset so the ramp-up isn't lost; when HR then stays below the gate for `autoEndCooldownMin` it
+    // auto-ends and saves. Gated on the SAME `noopAutoDetectWorkouts` toggle + a worn, bonded strap.
+
+    /// Rolling smoothed-HR buffer (wall-clock) used only for the auto-start / auto-end decision.
+    private var autoStartBuf: [(t: Date, bpm: Int)] = []
+    /// True only while the CURRENT `activeWorkout` was begun by auto-detection, so a MANUAL session the
+    /// user started is never auto-ended out from under them.
+    private var activeWorkoutWasAuto = false
+    /// After an auto-ended session, don't instantly re-arm on the tail of the same cool-down HR.
+    private var autoStartCooldownUntil: Date?
+
     /// A manual workout in progress. `samples` accumulate from the smoothed live `bpm`; `liveStrain`
     /// is recomputed as the window grows so the active card can show strain building in real time.
     struct ActiveWorkout: Equatable {
@@ -594,7 +610,44 @@ final class AppModel: ObservableObject {
         let smoothed = vals.isEmpty ? nil : Int(vals[vals.count / 2].rounded())
         if bpm != smoothed { bpm = smoothed }
         captureWorkoutSample()
+        // Feed the auto-start monitor the same smoothed value (only while the strap is worn, so a
+        // removed strap can't accumulate a phantom "bout"). Kept to a ~20 min window , enough for both
+        // the start-onset walk and the auto-end cool-down.
+        if let smoothed, live.worn {
+            autoStartBuf.append((now, smoothed))
+            autoStartBuf.removeAll { now.timeIntervalSince($0.t) > 20 * 60 }
+        }
+        evaluateAutoStart()
         evaluateStress()
+    }
+
+    /// Live auto-start / auto-end (opt-in via `noopAutoDetectWorkouts`). Called from `ingestHR` on every
+    /// fresh smoothed sample. The stateless decision lives in `LiveAutoStart` (unit tested); this method
+    /// owns the app-side state: the strap gate, the re-arm cool-down, and starting / ending the session.
+    private func evaluateAutoStart() {
+        guard PuffinExperiment.autoDetectWorkoutsEnabled, live.bonded, live.worn else { return }
+        let now = Date()
+        let nowT = now.timeIntervalSince1970
+        let buf = autoStartBuf.map { LiveAutoStart.Sample(t: $0.t.timeIntervalSince1970, bpm: $0.bpm) }
+        let recording = activeWorkout != nil
+        // Don't re-arm on the tail of a just-ended session's cool-down HR.
+        if !recording, let until = autoStartCooldownUntil, now < until { return }
+
+        switch LiveAutoStart.decide(buf: buf, nowT: nowT, restingBpm: repo.today?.restingHr,
+                                    isRecording: recording, wasAuto: activeWorkoutWasAuto) {
+        case .none:
+            return
+        case .start(let onsetT):
+            let onset = Date(timeIntervalSince1970: onsetT)
+            let seed = autoStartBuf
+                .filter { $0.t >= onset }
+                .map { HRSample(ts: Int($0.t.timeIntervalSince1970), bpm: $0.bpm) }
+            startWorkout(sport: WorkoutCatalog.defaultSportName, autoStarted: true,
+                         backfillStart: onset, backfillSamples: seed)
+        case .end:
+            endWorkout()
+            autoStartCooldownUntil = now.addingTimeInterval(LiveAutoStart.rearmMin * 60)
+        }
     }
 
     // MARK: - Manual workout tracking
@@ -603,13 +656,25 @@ final class AppModel: ObservableObject {
     /// name; callers that don't pick a sport get the catalogue default "Other", parity with Android's
     /// `startWorkout(sport:)`). The active card on Live then shows elapsed time, live HR and strain
     /// building; End scores + saves it under this sport. Confirms with a single buzz. (#519)
-    func startWorkout(sport: String = WorkoutCatalog.defaultSportName) {
+    func startWorkout(sport: String = WorkoutCatalog.defaultSportName,
+                      autoStarted: Bool = false,
+                      backfillStart: Date? = nil,
+                      backfillSamples: [HRSample] = []) {
         guard activeWorkout == nil else { return }
         lastWorkout = nil
         let name = sport.trimmingCharacters(in: .whitespaces)
         let resolved = name.isEmpty ? WorkoutCatalog.defaultSportName : name
-        let started = Date()
-        activeWorkout = ActiveWorkout(start: started, sport: resolved)
+        // Auto-start seeds from the detected onset so the ramp-up is captured; a manual start begins now.
+        let started = backfillStart ?? Date()
+        var w = ActiveWorkout(start: started, sport: resolved)
+        if !backfillSamples.isEmpty {
+            w.samples = backfillSamples
+            w.peakHr = backfillSamples.map(\.bpm).max() ?? 0
+            w.avgHr = Int((Double(backfillSamples.map(\.bpm).reduce(0, +)) / Double(backfillSamples.count)).rounded())
+            w.liveStrain = StrainScorer.strain(w.samples, maxHR: Double(profile.hrMax), sex: profile.sex) ?? 0
+        }
+        activeWorkout = w
+        activeWorkoutWasAuto = autoStarted
         // #524: arm GPS route recording for a distance-type sport (run / ride / walk / hike), mirroring
         // Android, which defaults GPS on for `isDistanceSport`. Manual-first / opt-in: only these sports
         // record a route, and the recorder still captures nothing unless the user grants When-In-Use
@@ -701,6 +766,7 @@ final class AppModel: ObservableObject {
     func endWorkout() {
         guard let w = activeWorkout else { return }
         activeWorkout = nil
+        activeWorkoutWasAuto = false
         let wasGps = activeWorkoutIsGps
         activeWorkoutIsGps = false
         // Drop the durable snapshot the instant the session ends , whether it saves below or is discarded
