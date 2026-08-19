@@ -122,6 +122,9 @@ final class AppModel: ObservableObject {
     /// appears to do nothing. Cleared the moment a below-gate sample arrives, so a later fresh bout can
     /// still auto-start.
     private var autoStartRequiresRest = false
+    /// True once the user has explicitly chosen the active workout's sport (manual start, or the sport
+    /// picker), so we don't overwrite their choice with the HR-family auto-guess when the session ends.
+    private var activeWorkoutSportUserSet = false
 
     /// A manual workout in progress. `samples` accumulate from the smoothed live `bpm`; `liveStrain`
     /// is recomputed as the window grows so the active card can show strain building in real time.
@@ -664,7 +667,12 @@ final class AppModel: ObservableObject {
             let seed = autoStartBuf
                 .filter { $0.t >= onset }
                 .map { HRSample(ts: Int($0.t.timeIntervalSince1970), bpm: $0.bpm) }
-            startWorkout(sport: WorkoutCatalog.defaultSportName, autoStarted: true,
+            // Best-effort HR-family guess for the initial label (the user can change it any time). We
+            // can't name a sport from HR alone, so we pre-fill the family's most likely sport.
+            let guess = WorkoutClassifier.classify(hr: seed, restingBpm: repo.today?.restingHr,
+                                                   maxBpm: Double(profile.hrMax))?
+                .suggestedSports.first ?? WorkoutCatalog.defaultSportName
+            startWorkout(sport: guess, autoStarted: true,
                          backfillStart: onset, backfillSamples: seed)
         case .end:
             endWorkout()
@@ -792,6 +800,8 @@ final class AppModel: ObservableObject {
         }
         activeWorkout = w
         activeWorkoutWasAuto = autoStarted
+        // A manual start is the user's explicit sport choice; an auto-start is only a guess we may refine.
+        activeWorkoutSportUserSet = !autoStarted
         // #524: arm GPS route recording for a distance-type sport (run / ride / walk / hike), mirroring
         // Android, which defaults GPS on for `isDistanceSport`. Manual-first / opt-in: only these sports
         // record a route, and the recorder still captures nothing unless the user grants When-In-Use
@@ -809,6 +819,27 @@ final class AppModel: ObservableObject {
         emitWorkoutsTrace(WorkoutsTrace.sessionLine(
             event: "start", sportKey: WorkoutSource.traceSportKey(resolved), hrSamples: 0))
         buzz(loops: 1)
+    }
+
+    /// Change the sport of the in-progress workout (the active-workout sport picker). Marks the sport as
+    /// user-chosen so the end-of-session HR-family auto-guess won't overwrite it, and re-arms/stops GPS to
+    /// match the new sport's distance flag (so switching to a run mid-session starts capturing a route,
+    /// and switching away stops it).
+    func setActiveWorkoutSport(_ name: String) {
+        guard var w = activeWorkout else { return }
+        let resolved = name.trimmingCharacters(in: .whitespaces)
+        guard !resolved.isEmpty, resolved != w.sport else { return }
+        w.sport = resolved
+        activeWorkout = w
+        activeWorkoutSportUserSet = true
+        persistActiveWorkout()
+        let nowGps = WorkoutCatalog.sport(named: resolved)?.isDistanceSport ?? false
+        if nowGps && !activeWorkoutIsGps {
+            gpsRecorder.start(startMs: Int64(w.start.timeIntervalSince1970 * 1000))
+        } else if !nowGps && activeWorkoutIsGps {
+            gpsRecorder.stop()
+        }
+        activeWorkoutIsGps = nowGps
     }
 
     /// Emit one Workouts & GPS test-mode line tagged `.workouts` iff the mode is on. The cheap
@@ -881,9 +912,20 @@ final class AppModel: ObservableObject {
     /// as a `WorkoutRow`. A session with no HR window AND no real GPS route is discarded quietly (parity
     /// with Android) , but a GPS-only walk with HR not streaming still saves. Double-buzz confirms.
     func endWorkout() {
-        guard let w = activeWorkout else { return }
+        guard var w = activeWorkout else { return }
+        let wasAuto = activeWorkoutWasAuto
+        let sportUserSet = activeWorkoutSportUserSet
         activeWorkout = nil
         activeWorkoutWasAuto = false
+        activeWorkoutSportUserSet = false
+        // For an auto-started session the user never relabeled, re-run the HR-family guess over the FULL
+        // captured window (more data than the 3-min onset had) to pick the best label before saving.
+        if wasAuto && !sportUserSet, w.samples.count >= 10,
+           let g = WorkoutClassifier.classify(hr: w.samples, restingBpm: repo.today?.restingHr,
+                                              maxBpm: Double(profile.hrMax)),
+           let best = g.suggestedSports.first {
+            w.sport = best
+        }
         // Stop the live auto-start monitor from instantly re-triggering on the elevated HR that's still
         // in the buffer , the key fix for "End workout does nothing" when pressed mid-effort (HR takes
         // minutes to drop). Clear the accumulated history and latch until HR falls back below the gate.

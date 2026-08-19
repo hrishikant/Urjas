@@ -37,6 +37,7 @@ struct LiveWorkoutView: View {
     /// Guards the destructive End action behind a confirm (#517) — a stray tap on the full-width button
     /// used to end the workout instantly with no way back.
     @State private var showEndConfirm = false
+    @State private var changingSport = false
 
     private var zoneSet: HRZoneSet { HRZones.zones(maxHR: Double(model.profile.hrMax)) }
     private var zone: Int { model.bpm.map { zoneSet.zoneNumber(forBPM: Double($0)) } ?? 0 }
@@ -103,6 +104,17 @@ struct LiveWorkoutView: View {
         } message: {
             Text("This stops recording and saves what's captured so far. It can't be resumed.")
         }
+        // Change the sport of the in-progress session (auto-started workouts default to a best-effort
+        // HR-family guess , this lets the user set the real activity, which also stops the auto-guess
+        // from overwriting it at the end).
+        .sheet(isPresented: $changingSport) {
+            StartWorkoutSheet(title: String(localized: "Change sport"),
+                              subtitle: String(localized: "Pick the activity you're doing. Ūrjas keeps the same HR recording."),
+                              actionVerb: String(localized: "Change")) { name in
+                model.setActiveWorkoutSport(name)
+                changingSport = false
+            }
+        }
     }
 
     private var header: some View {
@@ -111,8 +123,19 @@ struct LiveWorkoutView: View {
                 Text("RECORDING WORKOUT")
                     .font(StrandFont.overline).tracking(StrandFont.overlineTracking)
                     .foregroundStyle(StrandPalette.metricRose)
-                Text("Workout")
-                    .font(StrandFont.title1).foregroundStyle(StrandPalette.textPrimary)
+                Button {
+                    changingSport = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(model.activeWorkout?.sport ?? String(localized: "Workout"))
+                            .font(StrandFont.title1).foregroundStyle(StrandPalette.textPrimary)
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(StrandPalette.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Change sport, currently \(model.activeWorkout?.sport ?? "Workout")")
             }
             Spacer()
             if let start = model.activeWorkout?.start {

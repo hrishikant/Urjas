@@ -65,8 +65,24 @@ struct WorkoutDetailView: View {
     private struct StepReadout { let count: Int; let fromStrap: Bool }
     @State private var steps: StepReadout?
 
+    /// Locally-overridden sport after an in-place change, so the title/labels update immediately without
+    /// waiting for the parent list to re-key + reload this sheet's `row` (which is a `let` value snapshot).
+    @State private var changingSport = false
+    @State private var sportOverride: String?
+
+    /// The sport shown throughout the screen: the user's just-picked override, else the stored row sport.
+    private var displaySport: String { sportOverride ?? row.sport }
+
+    /// Only manual + detected sessions are editable in place; imported WHOOP/Apple history is read-only.
+    private var canChangeSport: Bool {
+        switch WorkoutSource.classify(row.source) {
+        case .manual, .detected: return true
+        default: return false
+        }
+    }
+
     var body: some View {
-        ScreenScaffold(title: "\(WorkoutSource.displaySport(row.sport))",
+        ScreenScaffold(title: "\(WorkoutSource.displaySport(displaySport))",
                        subtitle: "\(dateLabel(row.startTs))",
                        // PERF: chart/map-heavy column (a MapKit route map, the session HR curve, the
                        // zone-split chart and the effort card). The LazyVStack path builds the off-screen
@@ -94,8 +110,53 @@ struct WorkoutDetailView: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Done") { dismiss() }
             }
+            // Change the sport of an editable (manual / detected) session in place. Imported history stays
+            // read-only, so the button is hidden there (mirrors the Workouts list context menu).
+            if canChangeSport {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        changingSport = true
+                    } label: {
+                        Label("Change sport", systemImage: "figure.run")
+                    }
+                    .accessibilityLabel("Change sport")
+                }
+            }
+        }
+        .sheet(isPresented: $changingSport) {
+            StartWorkoutSheet(title: String(localized: "Change sport"),
+                              subtitle: String(localized: "Pick the activity for this session. Ūrjas keeps the same HR recording."),
+                              actionVerb: String(localized: "Change")) { name in
+                applySportChange(name)
+                changingSport = false
+            }
         }
         .task { await load() }
+    }
+
+    /// Persist a sport change for this saved session: detected bouts get re-labelled to a manual row,
+    /// manual sessions are re-saved under the new natural key. The route + captured metrics carry over
+    /// (handled inside the repo). Updates the local override so the title reflects it immediately.
+    private func applySportChange(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != displaySport else { return }
+        let source = WorkoutSource.classify(row.source)
+        sportOverride = trimmed
+        Task {
+            switch source {
+            case .detected:
+                await repo.relabelDetected(row, sport: trimmed)
+            case .manual:
+                let updated = WorkoutRow(startTs: row.startTs, endTs: row.endTs, sport: trimmed,
+                                         source: row.source, durationS: row.durationS,
+                                         energyKcal: row.energyKcal, avgHr: row.avgHr, maxHr: row.maxHr,
+                                         strain: row.strain, distanceM: row.distanceM,
+                                         zonesJSON: row.zonesJSON, notes: row.notes)
+                await repo.saveManualWorkout(updated, replacing: row)
+            default:
+                break
+            }
+        }
     }
 
     // MARK: - Load
