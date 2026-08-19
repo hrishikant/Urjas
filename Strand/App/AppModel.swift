@@ -139,6 +139,17 @@ final class AppModel: ObservableObject {
         var avgHr: Int = 0
         var peakHr: Int = 0
     }
+
+    /// The sport of the in-progress workout, or nil when nothing is recording — drives the Live
+    /// Activity's workout presentation (Lock Screen + Dynamic Island).
+    var liveWorkoutSport: String? { activeWorkout?.sport }
+
+    /// The current HR zone (1–5) while a workout is recording, else nil. Uses the same age-derived zone
+    /// set as the in-exercise screen so the Lock-Screen zone matches what the app shows.
+    var liveWorkoutZone: Int? {
+        guard activeWorkout != nil, let hr = bpm else { return nil }
+        return HRZones.zones(maxHR: Double(profile.hrMax)).zoneNumber(forBPM: Double(hr))
+    }
     /// Illness/strain early-warning (recent RHR up + HRV down + skin-temp up vs baseline). nil = clear.
     @Published var healthAlert: String?
 

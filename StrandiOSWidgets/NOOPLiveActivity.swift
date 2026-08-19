@@ -9,11 +9,12 @@ struct NOOPLiveActivity: Widget {
         ActivityConfiguration(for: NOOPActivityAttributes.self) { context in
             // Lock Screen / banner presentation.
             HStack(spacing: 14) {
-                Image(systemName: "waveform.path.ecg")
+                Image(systemName: context.state.sport != nil ? "figure.run" : "waveform.path.ecg")
                     .font(.title2)
                     .foregroundStyle(StrandPalette.statusCritical)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(context.attributes.title)
+                    // While a workout is recording, lead with the sport; otherwise the plain "Live HR".
+                    Text(context.state.sport ?? context.attributes.title)
                         .font(.caption).foregroundStyle(StrandPalette.textSecondary)
                     Text("\(context.state.bpm.map(String.init) ?? "–") bpm")
                         .font(.system(size: 26, weight: .bold, design: .rounded))
@@ -21,8 +22,12 @@ struct NOOPLiveActivity: Widget {
                 }
                 Spacer()
                 // Charge + Effort (#446) on the banner, mirroring the Dynamic Island expanded stats.
+                // During a workout the current HR zone takes priority so the Lock Screen reads as a live
+                // session (zone + effort), falling back to charge when no workout is active.
                 HStack(spacing: 12) {
-                    if let r = context.state.recovery {
+                    if let z = context.state.zone, z >= 1 {
+                        bannerStat(label: "Zone", value: "\(z)")
+                    } else if let r = context.state.recovery {
                         bannerStat(label: "Charge", value: "\(r)%")
                     }
                     if let e = context.state.effort {
@@ -40,9 +45,11 @@ struct NOOPLiveActivity: Widget {
                         .foregroundStyle(StrandPalette.statusCritical)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    // Charge + Effort (#446) — one more stat alongside the leading live HR.
+                    // Zone (during a workout) + Effort, else Charge + Effort — one more stat alongside HR.
                     HStack(spacing: 10) {
-                        if let r = context.state.recovery {
+                        if let z = context.state.zone, z >= 1 {
+                            statColumn(label: "Zone", value: "\(z)")
+                        } else if let r = context.state.recovery {
                             statColumn(label: "Charge", value: "\(r)%")
                         }
                         if let e = context.state.effort {
@@ -51,10 +58,12 @@ struct NOOPLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text(context.attributes.title).font(.caption).foregroundStyle(.secondary)
+                    Text(context.state.sport ?? context.attributes.title)
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             } compactLeading: {
-                Image(systemName: "heart.fill").foregroundStyle(StrandPalette.statusCritical)
+                Image(systemName: context.state.sport != nil ? "figure.run" : "heart.fill")
+                    .foregroundStyle(StrandPalette.statusCritical)
             } compactTrailing: {
                 Text("\(context.state.bpm.map(String.init) ?? "–")")
             } minimal: {
