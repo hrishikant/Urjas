@@ -17,13 +17,21 @@
       "tintColor": "#1FB6A6",
       "category": "healthcare-fitness",
       "screenshotURLs": [],
-      "version": "9.3.1",
-      "versionDate": "2026-08-16",
-      "versionDescription": "Ūrjas sideload build: NOOP→Ūrjas brand sweep, WHOOP-style Fitness Age panel, contextual coaching suggestions, auto-workout card on the home screen, and QA fixes.",
-      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v1.0.0-altstore/Urjas.ipa",
-      "size": 16817775,
+      "version": "9.3.2",
+      "versionDate": "2026-08-19",
+      "versionDescription": "Live workout auto-start/auto-end: Ūrjas now starts a recording by itself when your HR stays elevated (any sport) and ends it when you cool down. Includes a fix so auto-started sessions reliably auto-end.",
+      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.2/Urjas.ipa",
+      "size": 16823386,
       "minOSVersion": "17.0",
       "versions": [
+        {
+          "version": "9.3.2",
+          "date": "2026-08-19",
+          "localizedDescription": "Live workout auto-start/auto-end: Ūrjas now starts a recording by itself when your HR stays elevated (any sport) and ends it when you cool down. Includes a fix so auto-started sessions reliably auto-end.",
+          "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.2/Urjas.ipa",
+          "size": 16823386,
+          "minOSVersion": "17.0"
+        },
         {
           "version": "9.3.1",
           "date": "2026-08-16",
