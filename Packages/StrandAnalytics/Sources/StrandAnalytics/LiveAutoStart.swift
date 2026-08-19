@@ -63,11 +63,15 @@ public enum LiveAutoStart {
             // Only a session WE auto-started may auto-end , never a manual one the user is running.
             guard wasAuto else { return .none }
             let window = endCooldownMin * 60
-            let recent = buf.filter { nowT - $0.t <= window }
-            // Need a full cool-down window of data, all of it below the gate, before ending.
-            guard let earliest = recent.first,
-                  nowT - earliest.t >= window,
-                  recent.allSatisfy({ $0.bpm < gate }) else { return .none }
+            let cutoff = nowT - window
+            // Require ≥`window` of history (a sample at/older than the cutoff proves the stream spans the
+            // whole cool-down) AND every sample within the window below the gate. NOTE: we must NOT test
+            // `nowT - earliest.t >= window` on the *filtered* set , after filtering to `t >= cutoff` the
+            // earliest is by definition within the window, so on a live ~1 Hz stream that test is ~always
+            // just under `window` and the session would never end. The coverage sample gates it instead.
+            guard buf.contains(where: { $0.t <= cutoff }) else { return .none }
+            let recent = buf.filter { $0.t >= cutoff }
+            guard !recent.isEmpty, recent.allSatisfy({ $0.bpm < gate }) else { return .none }
             return .end
         }
 

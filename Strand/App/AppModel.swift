@@ -417,6 +417,15 @@ final class AppModel: ObservableObject {
             }
             #endif
             await self.repo.refresh()                          // surface any imported data at once
+            #if DEBUG
+            // DEBUG-only: `--simulate-workout-hr` drives the REAL live auto-start path (ingest buffer →
+            // evaluateAutoStart → LiveAutoStart.decide → startWorkout/endWorkout) with a synthetic HR
+            // series, since the Simulator has no BLE strap to stream from. Prints a PASS/FAIL trace and
+            // leaves the started session live so the Live tab shows the active card. No-op in Release.
+            if CommandLine.arguments.contains("--simulate-workout-hr") {
+                self.debugSimulateAutoStartWorkout()
+            }
+            #endif
             await self.wireSourceCoordinator()                 // dormant unless a generic strap is active
             try? await Task.sleep(nanoseconds: 6_000_000_000)  // give the first offload a moment
             // FIX 2(a): DEFER the heavy one-shot 4000-day heal/rescore while an import is in flight. A
@@ -649,6 +658,65 @@ final class AppModel: ObservableObject {
             autoStartCooldownUntil = now.addingTimeInterval(LiveAutoStart.rearmMin * 60)
         }
     }
+
+    #if DEBUG
+    /// DEBUG harness for `--simulate-workout-hr`: drives the REAL auto-start path with a synthetic HR
+    /// series (the Simulator has no BLE strap to stream from) and prints a PASS/FAIL trace so the
+    /// end-to-end wiring , gates, onset seeding, auto-start and auto-end , can be verified without hardware.
+    /// It fills `autoStartBuf` with backdated timestamps (standing in for ~real time) and calls the same
+    /// `evaluateAutoStart()` the live ingest loop calls. Leaves the started session live for a screenshot.
+    func debugSimulateAutoStartWorkout() {
+        func log(_ s: String) { NSLog("‹AUTOSTART-TEST› %@", s) }
+        // Pretend a bonded strap is worn and the opt-in toggle is on (the two runtime gates).
+        UserDefaults.standard.set(true, forKey: PuffinExperiment.autoDetectWorkoutsKey)
+        live.bonded = true
+        live.worn = true
+        let resting = repo.today?.restingHr ?? LiveAutoStart.defaultRestingHR
+        let gate = resting + LiveAutoStart.elevatedMarginBPM
+        log("resting=\(resting) gate=\(gate) toggle=on bonded=\(live.bonded) worn=\(live.worn)")
+
+        // SCENARIO A , sustained elevated HR should START a session seeded from the onset.
+        let now = Date()
+        let elevatedSecs = Int(LiveAutoStart.sustainMin * 60) + 60          // 4 min ≥ 3 min sustain
+        autoStartBuf = (0..<elevatedSecs).map { i in
+            (t: now.addingTimeInterval(Double(-elevatedSecs + i)), bpm: gate + 45)   // well above gate
+        }
+        evaluateAutoStart()
+        if let w = activeWorkout {
+            log("START  ✅ PASS , activeWorkout sport=\(w.sport) auto=\(activeWorkoutWasAuto) seededSamples=\(w.samples.count) avgHr=\(w.avgHr) peakHr=\(w.peakHr)")
+        } else {
+            log("START  ❌ FAIL , no activeWorkout after sustained elevated HR")
+            return
+        }
+
+        // SCENARIO B , sustained recovery below the gate should AUTO-END and save the session.
+        let recoverySecs = Int(LiveAutoStart.endCooldownMin * 60) + 60      // 6 min ≥ 5 min cooldown
+        let end = Date()
+        autoStartBuf = (0..<recoverySecs).map { i in
+            (t: end.addingTimeInterval(Double(-recoverySecs + i)), bpm: resting + 5)   // below gate
+        }
+        evaluateAutoStart()
+        if activeWorkout == nil, let saved = lastWorkout {
+            log("END    ✅ PASS , session auto-ended & saved sport=\(saved.sport) durationS=\(Int(saved.durationS ?? 0)) avgHr=\(saved.avgHr ?? -1)")
+        } else {
+            log("END    ❌ FAIL , activeWorkout still running=\(activeWorkout != nil) saved=\(lastWorkout != nil)")
+        }
+
+        // SCENARIO C , a MANUAL session must NOT be auto-ended even when fully recovered.
+        autoStartCooldownUntil = nil
+        startWorkout(sport: "Tennis")                                        // manual, autoStarted:false
+        autoStartBuf = (0..<recoverySecs).map { i in
+            (t: Date().addingTimeInterval(Double(-recoverySecs + i)), bpm: resting + 5)
+        }
+        evaluateAutoStart()
+        if activeWorkout != nil {
+            log("MANUAL ✅ PASS , manual session left running despite recovery (sport=\(activeWorkout!.sport))")
+        } else {
+            log("MANUAL ❌ FAIL , manual session was auto-ended")
+        }
+        endWorkout()   // clean up the manual session so the Live tab shows the earlier auto result state
+    }
+    #endif
 
     // MARK: - Manual workout tracking
 

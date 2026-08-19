@@ -118,11 +118,30 @@ final class LiveAutoStartTests: XCTestCase {
         XCTAssertEqual(d, .none)
     }
 
-    func testNeverAutoEndsAManualSession() {
-        // Recording but NOT auto-started → the live monitor must never end it, even fully recovered.
+    func testNeverAutoEndsAManualSession() {        // Recording but NOT auto-started → the live monitor must never end it, even fully recovered.
         let series = Array(repeating: 65, count: 600)
         let d = LiveAutoStart.decide(buf: buf(series), nowT: 0, restingBpm: resting,
                                      isRecording: true, wasAuto: false)
+        XCTAssertEqual(d, .none)
+    }
+
+    /// Regression: mimics a live stream where `now` trails the newest sample by a fraction of a second.
+    /// The old auto-end test filtered the buffer to the last `window`, then required
+    /// `now - earliest >= window` , after filtering the earliest is inside the window, so this was ~always
+    /// just under the threshold on a real ~1 Hz stream and the session would never auto-end.
+    func testEndsWhenNowTrailsSamplesByFractionOfASecond() {
+        let series = Array(repeating: 65, count: 360)   // 6 min below gate
+        let b = buf(series, endT: 0)                     // newest at t=0
+        let d = LiveAutoStart.decide(buf: b, nowT: 0.004, restingBpm: resting,
+                                     isRecording: true, wasAuto: true)
+        XCTAssertEqual(d, .end)
+    }
+
+    func testDoesNotEndWithoutFullWindowOfHistory() {
+        // Only ~2 min of below-gate history exists (stream just started) → not yet a full cool-down.
+        let series = Array(repeating: 65, count: 120)
+        let d = LiveAutoStart.decide(buf: buf(series, endT: 0), nowT: 0.004, restingBpm: resting,
+                                     isRecording: true, wasAuto: true)
         XCTAssertEqual(d, .none)
     }
 
