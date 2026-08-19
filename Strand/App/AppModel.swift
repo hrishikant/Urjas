@@ -116,6 +116,12 @@ final class AppModel: ObservableObject {
     private var activeWorkoutWasAuto = false
     /// After an auto-ended session, don't instantly re-arm on the tail of the same cool-down HR.
     private var autoStartCooldownUntil: Date?
+    /// Latch set whenever a session ENDS (auto or manual): the live monitor must NOT auto-start again
+    /// until HR has genuinely fallen BELOW the gate at least once. Without it, pressing "End workout"
+    /// while HR is still high (it takes minutes to cool down) instantly re-triggers auto-start , so End
+    /// appears to do nothing. Cleared the moment a below-gate sample arrives, so a later fresh bout can
+    /// still auto-start.
+    private var autoStartRequiresRest = false
 
     /// A manual workout in progress. `samples` accumulate from the smoothed live `bpm`; `liveStrain`
     /// is recomputed as the window grows so the active card can show strain building in real time.
@@ -639,6 +645,13 @@ final class AppModel: ObservableObject {
         let nowT = now.timeIntervalSince1970
         let buf = autoStartBuf.map { LiveAutoStart.Sample(t: $0.t.timeIntervalSince1970, bpm: $0.bpm) }
         let recording = activeWorkout != nil
+        // After a session ends, wait for a genuine rest (HR back below the gate) before arming again , so
+        // manually ending mid-effort doesn't instantly restart. Clears the moment HR drops below the gate.
+        if !recording, autoStartRequiresRest {
+            let gate = (repo.today?.restingHr ?? LiveAutoStart.defaultRestingHR) + LiveAutoStart.elevatedMarginBPM
+            if let last = autoStartBuf.last, last.bpm < gate { autoStartRequiresRest = false }
+            return
+        }
         // Don't re-arm on the tail of a just-ended session's cool-down HR.
         if !recording, let until = autoStartCooldownUntil, now < until { return }
 
@@ -714,7 +727,43 @@ final class AppModel: ObservableObject {
         } else {
             log("MANUAL ❌ FAIL , manual session was auto-ended")
         }
-        endWorkout()   // clean up the manual session so the Live tab shows the earlier auto result state
+        endWorkout()   // clean up the manual session
+
+        // SCENARIO D , pressing END while HR is STILL ELEVATED must NOT instantly restart a new session
+        // (the reported "End does nothing" bug). Auto-start, then end mid-effort, then keep HR high.
+        autoStartCooldownUntil = nil
+        autoStartRequiresRest = false
+        let elev = elevatedSecs
+        autoStartBuf = (0..<elev).map { i in
+            (t: Date().addingTimeInterval(Double(-elev + i)), bpm: gate + 45)
+        }
+        evaluateAutoStart()                                                 // auto-starts
+        let startedForEndTest = activeWorkout != nil
+        endWorkout()                                                        // user taps End, HR still high
+        // Simulate the next second's ingest: buffer immediately refills with still-elevated HR.
+        autoStartBuf = (0..<elev).map { i in
+            (t: Date().addingTimeInterval(Double(-elev + i)), bpm: gate + 45)
+        }
+        evaluateAutoStart()
+        if startedForEndTest, activeWorkout == nil {
+            log("END-HOT ✅ PASS , manual end held; no instant restart while HR still elevated")
+        } else {
+            log("END-HOT ❌ FAIL , startedFirst=\(startedForEndTest) restarted=\(activeWorkout != nil)")
+        }
+
+        // SCENARIO E , after HR genuinely drops to rest, a NEW bout is allowed to auto-start again.
+        autoStartBuf = [(t: Date(), bpm: resting + 3)]                      // one below-gate sample = rest
+        evaluateAutoStart()                                                 // clears the rest latch
+        autoStartBuf = (0..<elev).map { i in
+            (t: Date().addingTimeInterval(Double(-elev + i)), bpm: gate + 45)
+        }
+        evaluateAutoStart()
+        if activeWorkout != nil {
+            log("REARM   ✅ PASS , a fresh bout after rest auto-starts again (sport=\(activeWorkout!.sport))")
+        } else {
+            log("REARM   ❌ FAIL , auto-start did not re-arm after a rest reset")
+        }
+        endWorkout()   // clean up
     }
     #endif
 
@@ -835,6 +884,11 @@ final class AppModel: ObservableObject {
         guard let w = activeWorkout else { return }
         activeWorkout = nil
         activeWorkoutWasAuto = false
+        // Stop the live auto-start monitor from instantly re-triggering on the elevated HR that's still
+        // in the buffer , the key fix for "End workout does nothing" when pressed mid-effort (HR takes
+        // minutes to drop). Clear the accumulated history and latch until HR falls back below the gate.
+        autoStartBuf.removeAll()
+        autoStartRequiresRest = true
         let wasGps = activeWorkoutIsGps
         activeWorkoutIsGps = false
         // Drop the durable snapshot the instant the session ends , whether it saves below or is discarded
