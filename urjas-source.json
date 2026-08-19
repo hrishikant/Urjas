@@ -17,13 +17,21 @@
       "tintColor": "#1FB6A6",
       "category": "healthcare-fitness",
       "screenshotURLs": [],
-      "version": "9.3.2",
+      "version": "9.3.3",
       "versionDate": "2026-08-19",
-      "versionDescription": "Live workout auto-start/auto-end: Ūrjas now starts a recording by itself when your HR stays elevated (any sport) and ends it when you cool down. Includes a fix so auto-started sessions reliably auto-end.",
-      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.2/Urjas.ipa",
-      "size": 16823386,
+      "versionDescription": "HR-based sport identification plus a workout Live Activity. Auto-started workouts now guess the sport from your heart-rate shape instead of always 'Other'; change the sport of a live or saved session; and while a workout records, the Lock Screen and Dynamic Island show the sport, live HR and current HR zone.",
+      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.3/Urjas.ipa",
+      "size": 16846617,
       "minOSVersion": "17.0",
       "versions": [
+        {
+          "version": "9.3.3",
+          "date": "2026-08-19",
+          "localizedDescription": "HR-based sport identification plus a workout Live Activity. Auto-started workouts now guess the sport from your heart-rate shape instead of always 'Other'; change the sport of a live or saved session; and while a workout records, the Lock Screen and Dynamic Island show the sport, live HR and current HR zone.",
+          "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.3/Urjas.ipa",
+          "size": 16846617,
+          "minOSVersion": "17.0"
+        },
         {
           "version": "9.3.2",
           "date": "2026-08-19",
