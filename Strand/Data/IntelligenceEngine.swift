@@ -1077,8 +1077,31 @@ final class IntelligenceEngine: ObservableObject {
                     }
                     continue
                 }
+                // Tier-2 IMU refinement: the 1 Hz classifier fixed the coarse FAMILY (in `predictedClass`);
+                // if the strap captured 100 Hz raw IMU over this bout's window, upgrade the auto-LABEL from
+                // the family default to a concrete within-family sport (tennis vs badminton, swim vs row).
+                // Best-effort + advisory: no class, no captured IMU, or an indistinct signature all silently
+                // fall back to the 1 Hz `predictedSport`. IMU is stored under the day's resolved READ owner
+                // (the strap that recorded the raw stream), same id the day was scored from.
+                var sportToken = s.predictedSport ?? "detected"
+                var imuReason: String? = nil
+                if let className = s.predictedClass,
+                   let coarse = CoarseWorkoutClass(rawValue: className) {
+                    let imuOwner = readOwnerByDay[daily.day]?.owner ?? deviceId
+                    if let imuRows = try? await store.loadRawImu(deviceId: imuOwner, from: s.start, to: s.end),
+                       !imuRows.isEmpty {
+                        let frames = imuRows.compactMap { Whoop5RawImu.frame(fromColumns: $0.cols, baseTs: $0.ts) }
+                        if !frames.isEmpty {
+                            let feats = ImuFeatureExtractor.extract(frames: frames)
+                            if let refined = ImuSportRefiner.refine(coarse: coarse, imu: feats) {
+                                sportToken = refined.sport
+                                imuReason = refined.reason
+                            }
+                        }
+                    }
+                }
                 workoutRows.append(WorkoutRow(startTs: s.start, endTs: s.end,
-                                              sport: "detected", source: computedId,
+                                              sport: sportToken, source: computedId,
                                               durationS: s.durationS, energyKcal: s.caloriesKcal,
                                               avgHr: avgBpm, maxHr: s.peakHR,
                                               strain: s.strain, distanceM: nil,
@@ -1086,6 +1109,9 @@ final class IntelligenceEngine: ObservableObject {
                 if workoutsTraceActive {
                     diagnosticSink?(WorkoutsTrace.detectedBoutLine(
                         verdict: "persisted", durMin: durMin, avgBpm: avgBpm), .workouts)
+                    if let imuReason {
+                        diagnosticSink?("  imu-refine → \(sportToken): \(imuReason)", .workouts)
+                    }
                 }
             }
         }
@@ -1472,7 +1498,7 @@ final class IntelligenceEngine: ObservableObject {
         // Make re-detection idempotent across runs: clear the prior computed detected workouts in the
         // scored window (a bout's startTs can drift as more HR arrives, which would otherwise orphan
         // stale rows under the (deviceId,startTs,sport) key), then re-insert.
-        _ = try? await store.deleteWorkouts(deviceId: computedId, sport: "detected",
+        _ = try? await store.deleteWorkouts(deviceId: computedId, source: computedId,
                                             from: windowStart, to: now)
         if !workoutRows.isEmpty { _ = try? await store.upsertWorkouts(workoutRows, deviceId: computedId) }
         // #510: write back any real (manual/imported) rows a dropped detected bout backfilled, one

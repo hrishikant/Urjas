@@ -123,6 +123,23 @@ extension WhoopStore {
         }
     }
 
+    /// #423: windowed read side of the raw-IMU capture. Returns the stored rows whose strap-second
+    /// `ts` falls in [from, to] (inclusive), ascending, each as its unpacked i16 column block — the
+    /// caller (StrandAnalytics, which owns WhoopProtocol) rebuilds `Whoop5ImuFrame`s via
+    /// `Whoop5RawImu.frame(fromColumns:baseTs:)` and feeds `ImuFeatureExtractor`. Kept blob-only here so
+    /// the store stays free of a WhoopProtocol dependency. Bounded by the table's rolling retention
+    /// (`rawImuRetentionRows` ≈ 1 h), so a window older than that simply returns fewer/no rows.
+    public func loadRawImu(deviceId: String, from: Int, to: Int) async throws -> [(ts: Int, cols: [Int16])] {
+        try syncRead { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT ts, samples FROM rawImuSample
+                WHERE deviceId = ? AND ts >= ? AND ts <= ?
+                ORDER BY ts ASC
+                """, arguments: [deviceId, from, to])
+            return rows.map { (ts: $0["ts"], cols: WhoopStore.unpackImuColumns($0["samples"])) }
+        }
+    }
+
     /// Idempotent upsert of decoded streams by natural key. Returns the number of rows
     /// ACTUALLY inserted per stream (0 for rows that already existed).
     ///

@@ -77,6 +77,29 @@ public enum Whoop5RawImu {
         return Whoop5ImuFrame(baseTs: baseTs, sampleRateHz: sampleCount, samples: samples)
     }
 
+    /// Rebuild a decoded frame from the stored raw i16 columns (the inverse of `rawColumns`) plus the
+    /// row's base timestamp, applying the documented accel/gyro scales at read time. `cols` must be a
+    /// clean 6×N (ax…az,gx…gz) block; nil otherwise. This is the read side of the #423 capture: the
+    /// store persists `rawColumns` as a packed BLOB, and the windowed IMU reader hands the unpacked
+    /// columns back here to reconstitute samples for `ImuFeatureExtractor`. `sampleRateHz` is taken as
+    /// N (the per-second sample count), matching `decode`'s convention.
+    public static func frame(fromColumns cols: [Int16], baseTs: Int) -> Whoop5ImuFrame? {
+        guard !cols.isEmpty, cols.count % 6 == 0 else { return nil }
+        let n = cols.count / 6
+        let axB = 0, ayB = n, azB = 2 * n, gxB = 3 * n, gyB = 4 * n, gzB = 5 * n
+        var samples = [RawImuSample](); samples.reserveCapacity(n)
+        for i in 0..<n {
+            samples.append(RawImuSample(
+                ax: Double(cols[axB + i]) * accelScale,
+                ay: Double(cols[ayB + i]) * accelScale,
+                az: Double(cols[azB + i]) * accelScale,
+                gx: Double(cols[gxB + i]) * gyroScale,
+                gy: Double(cols[gyB + i]) * gyroScale,
+                gz: Double(cols[gzB + i]) * gyroScale))
+        }
+        return Whoop5ImuFrame(baseTs: baseTs, sampleRateHz: n, samples: samples)
+    }
+
     /// The raw i16 columns exactly as they sit on the wire — [ax×100, ay×100, az×100, gx×100, gy×100,
     /// gz×100] — for faithful, compact storage (#423). Same length + sample-count gate and offsets as
     /// `decode`; nil if `f` isn't a valid IMU buffer. Scales stay documented constants applied at read

@@ -53,6 +53,10 @@ final class Collector {
     /// at construction. Single-WHOOP never switches, so this stays "my-whoop" exactly as a `let` would have.
     var deviceId: String
     private let policy: CollectorPolicy
+    /// #423: opt-OUT (default ON) UserDefaults key for persisting the 5/MG 100 Hz raw-IMU offload buffer.
+    /// Decoupled from the research full-frame recorder so IMU — a small, self-capping, real product input
+    /// (within-family sport prediction) — is captured in normal operation. Set to `false` to disable.
+    static let imuCaptureEnabledKey = "noopImuCapture"
     /// Research toggle. When false (DEFAULT) no raw frames are persisted at all — the app is
     /// decoded-only. Injected for tests; backed by UserDefaults in the production init site.
     private let enableRawCapture: Bool
@@ -129,12 +133,19 @@ final class Collector {
     }
 
     /// #423: persist the WHOOP 5/MG raw-IMU offload buffer Ūrjas already decodes for the deep-buffer log —
-    /// the queryable twin of that (table-less) diagnostics line. Same `noopPuffinCapture` gate; only the
-    /// 1244-B 6-axis buffer decodes (rawColumns nil otherwise). Fire-and-forget into the store, bounded by
-    /// a rolling retention prune. Raw i16, no downstream consumer yet. Twin of Android
+    /// the queryable twin of that (table-less) diagnostics line. Only the 1244-B 6-axis buffer decodes
+    /// (rawColumns nil otherwise). Fire-and-forget into the store, bounded by a rolling retention prune
+    /// (~1 h, ~4 MB). Feeds the after-sync IMU sport refiner (`ImuSportRefiner`). Twin of Android
     /// `WhoopBleClient.storeWhoop5RawImuIfBuffer`.
+    ///
+    /// Gate: IMU capture is opt-OUT (default ON) via `imuCaptureEnabledKey`, DECOUPLED from the heavy
+    /// full-frame research recorder (`noopPuffinCapture`) — the IMU table is small and self-capping, and
+    /// it's now an actual product input (within-family sport prediction), not just diagnostics. The
+    /// research recorder still force-enables it too, so a full capture session always includes IMU.
     func storeRawImu(frame: [UInt8]) {
-        guard UserDefaults.standard.bool(forKey: PuffinFrameRecorder.enabledKey) else { return }
+        let d = UserDefaults.standard
+        let imuOptIn = (d.object(forKey: Collector.imuCaptureEnabledKey) as? Bool) ?? true
+        guard imuOptIn || d.bool(forKey: PuffinFrameRecorder.enabledKey) else { return }
         guard let cols = Whoop5RawImu.rawColumns(frame), let baseTs = Whoop5RawImu.baseTs(frame) else { return }
         let dev = deviceId
         Task { [store] in

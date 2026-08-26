@@ -663,6 +663,22 @@ public enum AnalyticsEngine {
             maxHR: maxHROverride,
             age: profile.age > 0 ? profile.age : nil,
             profile: profile)
+            .map { s -> ExerciseSession in
+                // After-sync sport prediction (#court/swim/gym): fuse the window's HR shape + the strap's
+                // wrist-motion (gravity) + its own step activity-class into a coarse class, then map to a
+                // concrete sport to LABEL the bout. Confidence-gated; below the bar we leave it generic so
+                // the UI shows "Activity" rather than a wrong guess. Uses the day streams already in hand,
+                // so no extra store read. NEVER touches a user-picked sport (that's a manual/strap row).
+                guard let feats = WorkoutTypeFeatureExtractor.extract(
+                    hr: dayHr ?? hr, gravity: dayGravity ?? gravity, steps: daySteps ?? steps,
+                    start: s.start, end: s.end,
+                    restingHR: restingHRDaily.map(Double.init), maxHR: maxHROverride,
+                    caloriesKcal: s.caloriesKcal) else { return s }
+                let pred = WorkoutTypeClassifier.classify(feats)
+                guard pred.predictedClass != .other, pred.confidence >= 0.55,
+                      let sport = pred.predictedClass.suggestedSports.first else { return s }
+                return s.withPrediction(sport: sport, class: pred.predictedClass.rawValue)
+            }
 
         // ── Steps (APPROXIMATE) ───────────────────────────────────────────────
         // step_motion_counter@57 is a CUMULATIVE u16 running counter (it climbs while you move, holds

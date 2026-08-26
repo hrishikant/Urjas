@@ -171,6 +171,9 @@ final class AppModel: ObservableObject {
     /// Current ground speed in m/s from the GPS route recorder, or nil when no route/pace is live. Derived
     /// from live pace (sec/km); a movement signal for `SportRanker`.
     var liveSpeedMps: Double? {
+        #if DEBUG
+        if let s = debugLiveSpeedMps { return s }
+        #endif
         guard gpsRecorder.isRecording, let pace = gpsRecorder.paceSecPerKm, pace > 0 else { return nil }
         return 1000.0 / pace
     }
@@ -178,9 +181,19 @@ final class AppModel: ObservableObject {
     /// Live GPS distance (metres) for the in-progress distance workout, or nil when no route is being
     /// captured — feeds the WHOOP-style Live Activity DISTANCE readout.
     var liveWorkoutDistanceM: Double? {
+        #if DEBUG
+        if let d = debugLiveDistanceM { return d }
+        #endif
         guard activeWorkout != nil, gpsRecorder.isRecording, gpsRecorder.distanceM > 0 else { return nil }
         return gpsRecorder.distanceM
     }
+
+    #if DEBUG
+    /// DEBUG-only overrides so the `--demo-live-activity` harness can show DISTANCE + SPEED on the Live
+    /// Activity in the Simulator, where CoreLocation delivers no GPS fixes. nil in every normal run.
+    var debugLiveDistanceM: Double?
+    var debugLiveSpeedMps: Double?
+    #endif
 
     /// Start instant of the in-progress workout — drives the Live Activity's self-counting elapsed timer.
     var liveWorkoutStartedAt: Date? { activeWorkout?.start }
@@ -495,6 +508,13 @@ final class AppModel: ObservableObject {
             // leaves the started session live so the Live tab shows the active card. No-op in Release.
             if CommandLine.arguments.contains("--simulate-workout-hr") {
                 self.debugSimulateAutoStartWorkout()
+            }
+            // DEBUG-only: `--demo-live-activity` keeps a "Running" workout + a steady live HR stream
+            // running (with faked GPS distance/speed, since the Simulator has no CoreLocation fixes) so
+            // the REAL WHOOP-style Live Activity renders on the Lock Screen / Dynamic Island for a
+            // screenshot. No-op in Release.
+            if CommandLine.arguments.contains("--demo-live-activity") {
+                self.debugStartLiveActivityDemo()
             }
             #endif
             await self.wireSourceCoordinator()                 // dormant unless a generic strap is active
@@ -904,6 +924,41 @@ final class AppModel: ObservableObject {
         } else {
             log("SPIKE   ❌ FAIL , startedFirst=\(startedForSpikeTest) stillRunning=\(activeWorkout != nil)")
             if activeWorkout != nil { endWorkout() }
+        }
+    }
+
+    private var debugLiveActivityTimer: Timer?
+
+    /// DEBUG harness for `--demo-live-activity`: leaves a "Running" workout live with a steady, connected
+    /// HR stream and faked GPS distance/speed so the REAL WHOOP-style Live Activity renders on the Lock
+    /// Screen / Dynamic Island in the Simulator (which has no BLE strap and no CoreLocation fixes).
+    func debugStartLiveActivityDemo() {
+        // Pretend a strap is bonded, worn and streaming — the runtime gates for the Live Activity.
+        live.bonded = true
+        live.worn = true
+        live.connected = true
+        // Faked route so DISTANCE + SPEED render like WHOOP (≈0.82 mi at ≈4.0 mph, matching the reference).
+        debugLiveDistanceM = 1319
+        debugLiveSpeedMps = 1.79
+        // Backdate the start so the self-counting elapsed timer reads a realistic in-progress value.
+        startWorkout(sport: "Running", backfillStart: Date().addingTimeInterval(-737))
+        let base = 137
+        bpm = base
+        live.heartRate = base
+        NSLog("‹LIVE-ACTIVITY-DEMO› started sport=Running hr=%d dist=%.0fm speed=%.2f", base,
+              debugLiveDistanceM ?? 0, debugLiveSpeedMps ?? 0)
+        // Keep it fresh + connected (and inching distance forward) so the activity stays live for a
+        // screenshot; the HR publisher tick is what drives `liveActivity.update(...)`.
+        debugLiveActivityTimer?.invalidate()
+        debugLiveActivityTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.activeWorkout != nil else { return }
+                let v = base + Int.random(in: -4...4)
+                self.bpm = v
+                self.live.connected = true
+                self.live.heartRate = v
+                self.debugLiveDistanceM = (self.debugLiveDistanceM ?? 0) + (self.debugLiveSpeedMps ?? 0) * 2
+            }
         }
     }
     #endif

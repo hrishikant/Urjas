@@ -57,6 +57,10 @@ public enum SportRanker {
     /// Cadence thresholds (steps/min). Running foot-strike is fast (>~150); walking is ~90–135.
     static let runCadenceSpm = 145.0
     static let walkCadenceSpm = 70.0
+    /// Minimum ground speed (m/s) that counts as real walking gait rather than court shuffling / pacing.
+    /// ~0.9 m/s ≈ 3.2 km/h. Below this we do NOT vote "Walking" from speed alone, so a tennis/badminton
+    /// player shuffling on court (low speed, few footfalls) isn't confidently mislabelled as walking.
+    static let walkFloorMps = 0.9
 
     /// A confident single pick, or nil when no movement signal is strong enough to name a sport (the
     /// caller then labels the session neutrally, e.g. "Workout", and shows `rank(_:)` in the picker).
@@ -106,15 +110,23 @@ public enum SportRanker {
             case .running:
                 bump("Running", 4); bump("Treadmill run", 1)
             case .walking:
-                bump("Walking", 3.5); bump("Hiking", 1.5); bump("Treadmill walk", 1)
+                // Walking motion alone is easily produced by court shuffling / pacing between points, so
+                // it only earns its full weight when corroborated by a real gait signal (a true walking
+                // ground speed OR actual footfalls). Uncorroborated, it stays a weak vote so court /
+                // interval sports fall to the neutral "Workout" picker instead of a wrong "Walking" label.
+                let gait = (spd ?? 0) >= walkFloorMps || (s.cadenceSpm ?? 0) >= walkCadenceSpm
+                bump("Walking", gait ? 3.5 : 0.6); bump("Hiking", gait ? 1.5 : 0.3)
+                if gait { bump("Treadmill walk", 1) }
             case .cycling:
                 bump("Cycling", 4); bump("Indoor cycle", 1)
             case .automotive:
                 // In a vehicle → almost never a workout; nudge nothing (let HR family/other decide).
                 break
             case .stationary:
-                // Stationary but HR is up → gym / mat work. Let the family shortlist lead.
-                bump("Strength", 1.5)
+                // Stationary but HR is up → gym / mat work — BUT only nudge "Strength" when the HR shape
+                // agrees (or is unknown). For an intervals/endurance/mobility family (court, team, HIIT,
+                // cardio) a stationary phone must NOT push Strength to the top of the picker.
+                if s.family == nil || s.family == .strength { bump("Strength", 1.5) }
             case .unknown:
                 break
             }
@@ -128,8 +140,9 @@ public enum SportRanker {
             } else if v >= walkRunSplitMps {
                 // Jog/run pace band.
                 bump("Running", 2)
-            } else {
-                // Slow ground speed → walking/hiking.
+            } else if v >= walkFloorMps {
+                // Real walking ground speed → walking/hiking. Below `walkFloorMps` (a court shuffle /
+                // drift) we deliberately cast no walking vote.
                 bump("Walking", 1.5); bump("Hiking", 0.8)
             }
         }

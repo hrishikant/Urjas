@@ -2419,7 +2419,7 @@ final class Repository: ObservableObject {
                                 avgHr: row.avgHr, maxHr: row.maxHr, strain: row.strain,
                                 distanceM: row.distanceM, zonesJSON: row.zonesJSON, notes: row.notes)
         _ = try? await store.upsertWorkouts([manual], deviceId: deviceId)
-        _ = try? await store.deleteWorkouts(deviceId: computedDeviceId, sport: "detected",
+        _ = try? await store.deleteWorkouts(deviceId: computedDeviceId, sport: row.sport,
                                             from: row.startTs, to: row.startTs)
     }
 

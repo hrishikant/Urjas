@@ -52,9 +52,36 @@ public enum CoarseWorkoutClass: String, Equatable, Hashable, Sendable, Codable, 
     case strength
     case cycle
     case ski
-    /// No candidate class cleared the plausibility/margin bar — genuinely unclear, or a shape (e.g.
-    /// swim, row, court sport) this MVP doesn't model. Never a wrong specific guess dressed up.
+    /// Continuous, RHYTHMIC whole-arm cardio with no walk/run gait: swimming, rowing, the elliptical.
+    /// Distinguished from `cycle` by MOTION MAGNITUDE (arms sweep vs. hands-on-bars) and from
+    /// `strength`/`court` by HR SMOOTHNESS (steady effort, no sets-then-rest sawtooth). Needs the strap's
+    /// wrist-motion; the phone is typically on a bench for these, so phone motion/GPS don't help.
+    case rhythmicCardio
+    /// Intermittent court / team / HIIT: tennis, badminton, squash, basketball, boxing, HIIT circuits.
+    /// BURSTY HR like strength, but the athlete MOVES (some gait, more sustained motion) and the bursts
+    /// are IRREGULAR start-stop rather than ski's big continuous turns. The exact sport within this
+    /// family is NOT separable from ~1 Hz data — that's a pre-ranked one-tap pick, never a wrong guess.
+    case court
+    /// No candidate class cleared the plausibility/margin bar — genuinely unclear, or a shape this
+    /// classifier doesn't model. Never a wrong specific guess dressed up.
     case other
+
+    /// Best-first shortlist of concrete `WorkoutCatalog` sport names for this class — the label to
+    /// auto-apply (`.first`) plus the pre-ranked picker order the user confirms with one tap. Mirrors
+    /// the names in `SportRanker.catalog`; kept here so the after-sync relabel can map a class to a sport
+    /// without importing the app target.
+    public var suggestedSports: [String] {
+        switch self {
+        case .walk:           return ["Walking", "Hiking", "Treadmill walk"]
+        case .run:            return ["Running", "Treadmill run", "Hiking"]
+        case .strength:       return ["Strength", "Weightlifting", "Bodybuilding", "HIIT"]
+        case .cycle:          return ["Cycling", "Indoor cycle"]
+        case .ski:            return ["Skiing", "Snowboarding"]
+        case .rhythmicCardio: return ["Pool swim", "Rowing", "Elliptical", "Open-water swim", "Row machine"]
+        case .court:          return ["HIIT", "Tennis", "Badminton", "Squash", "Basketball", "Boxing", "Padel", "Pickleball"]
+        case .other:          return []
+        }
+    }
 }
 
 // MARK: - Input feature vector
@@ -88,8 +115,15 @@ public struct WorkoutClassFeatures: Equatable, Sendable, Codable {
     public let tickCoverage: Double
 
     // --- Gravity-derived posture / motion shape ---
-    /// Variance of the per-record L2 gravity-delta intensity series over the window (the same series
-    /// `WorkoutDetector.activitySeries` computes) — a coarse posture/impact-variability proxy.
+    /// MEAN of the per-record L2 gravity-delta intensity series over the window — the direct
+    /// wrist-motion MAGNITUDE (how much the wrist actually moves per second). This is the primary
+    /// motion-LEVEL discriminator: a swim/row sweeps the wrist through large arcs continuously (HIGH
+    /// mean), a cyclist's hands sit near-still on the bars (LOW mean), even though BOTH are smooth
+    /// steady efforts with LOW variance — so variance alone can't separate them (the #court/swim
+    /// mislabel bug). Same intensity series `WorkoutDetector.activitySeries` computes.
+    public let motionMean: Double
+    /// Variance of that same per-record intensity series — a coarse posture/impact-VARIABILITY proxy
+    /// (kept alongside `motionMean` for shape, no longer overloaded as the magnitude proxy).
     public let motionVariance: Double
     /// Coefficient of variation of that same intensity series — burstiness/regularity, NOT a cadence
     /// estimate (see file header). Low = smooth continuous motion (cycle); high = stop-start bursts
@@ -103,12 +137,12 @@ public struct WorkoutClassFeatures: Equatable, Sendable, Codable {
 
     public init(durationSec: Double, meanHR: Double, peakHR: Int, meanHRRPct: Double?, hrCV: Double,
                 stillFraction: Double, walkFraction: Double, runFraction: Double, tickCoverage: Double,
-                motionVariance: Double, motionCV: Double, kcalPerMin: Double?) {
+                motionMean: Double, motionVariance: Double, motionCV: Double, kcalPerMin: Double?) {
         self.durationSec = durationSec
         self.meanHR = meanHR; self.peakHR = peakHR; self.meanHRRPct = meanHRRPct; self.hrCV = hrCV
         self.stillFraction = stillFraction; self.walkFraction = walkFraction; self.runFraction = runFraction
         self.tickCoverage = tickCoverage
-        self.motionVariance = motionVariance; self.motionCV = motionCV
+        self.motionMean = motionMean; self.motionVariance = motionVariance; self.motionCV = motionCV
         self.kcalPerMin = kcalPerMin
     }
 }
@@ -207,6 +241,8 @@ public enum WorkoutTypeClassifier {
             .strength: strengthScore(f),
             .cycle: cycleScore(f),
             .ski: skiScore(f),
+            .rhythmicCardio: rhythmicCardioScore(f),
+            .court: courtScore(f),
         ]
     }
 
@@ -240,6 +276,13 @@ public enum WorkoutTypeClassifier {
         return rampUp(f.stillFraction, 0.40, 0.75)
     }
 
+    /// Multiplicative suppressor for the NON-FOOT classes (cycle / ski / rhythmic-cardio): when the
+    /// strap logs sustained walk/run gait ticks the wearer is on their feet, so these can't be right —
+    /// scale them down rather than let a high HR/posture score keep them competitive and blur the
+    /// margin (which is what dragged court sports below the auto-apply confidence bar). Neutral (1.0)
+    /// when ticks are too sparse to tell, so a tick-less capture is never penalized.
+    static func nonFootGaitGate(_ f: WorkoutClassFeatures) -> Double { 0.40 + 0.60 * gaitAbsenceScore(f) }
+
     // MARK: - Per-class scoring
 
     /// RUN: dominant run-classified ticks when available; else a smooth (low-`hrCV`), elevated-%HRR,
@@ -247,7 +290,7 @@ public enum WorkoutTypeClassifier {
     static func runScore(_ f: WorkoutClassFeatures) -> Double {
         let tick = rampUp(f.runFraction, 0.15, 0.55)
         let hr = rampUp(f.meanHRRPct ?? 55, 45, 75)
-        let motion = plateau(f.motionVariance, 0.05, 0.10, 0.35, 0.60)
+        let motion = plateau(f.motionMean, 0.08, 0.16, 0.45, 0.75)
         let smooth = rampDown(f.hrCV, 0.05, 0.12)
         let tickWeighted = 0.55 * tick + 0.25 * hr + 0.15 * motion + 0.05 * smooth
         let fallback = 0.45 * hr + 0.35 * motion + 0.20 * smooth
@@ -260,11 +303,15 @@ public enum WorkoutTypeClassifier {
     static func walkScore(_ f: WorkoutClassFeatures) -> Double {
         let tick = rampUp(f.walkFraction, 0.15, 0.55)
         let hr = plateau(f.meanHRRPct ?? 30, 5, 15, 35, 55)
-        let motion = plateau(f.motionVariance, 0.005, 0.02, 0.07, 0.12)
+        let motion = plateau(f.motionMean, 0.01, 0.03, 0.15, 0.30)
         let tickWeighted = 0.60 * tick + 0.25 * hr + 0.15 * motion
         let fallback = 0.55 * hr + 0.45 * motion
         let rel = tickReliability(f)
-        return tickWeighted * rel + fallback * (1 - rel)
+        // Walking is implausible at high %HRR: dominant walk ticks alone (a court player pacing between
+        // points logs plenty) must not let WALK shadow a genuine high-intensity effort. Fades out over
+        // 55→80 %HRR. Leaves real walks (low/moderate %HRR) untouched.
+        let hrPlausible = rampDown(f.meanHRRPct ?? 30, 55, 80)
+        return (tickWeighted * rel + fallback * (1 - rel)) * hrPlausible
     }
 
     /// STRENGTH: no walk/run gait, BURSTY HR (sets separated by rest reads as high `hrCV`, unlike a
@@ -277,12 +324,12 @@ public enum WorkoutTypeClassifier {
         let bursty = rampUp(f.hrCV, 0.06, 0.16)
         let hr = plateau(f.meanHRRPct ?? 45, 15, 30, 80, 100)
         let lowBurnRate = rampDown(f.kcalPerMin ?? 6, 6, 11)
-        let lowMotion = rampDown(f.motionVariance, 0.05, 0.15)
-        // `bursty` carries the most weight deliberately: it's the one genuinely distinctive signal
-        // here (HR sawtooth from sets-then-rest). hr/lowBurnRate are generic enough (moderate HR,
-        // moderate burn rate) that other steady-effort classes match them too, so a SMOOTH window
-        // (bursty ≈ 0) must not still score as strength just by having plausible HR/motion levels.
-        return 0.45 * bursty + 0.20 * noGait + 0.20 * lowMotion + 0.10 * hr + 0.05 * lowBurnRate
+        // LOW wrist-motion MAGNITUDE (not just low variability): a rack of lifts keeps the wrist near
+        // still between sets and swings it through small arcs during them — far less than a swim's
+        // continuous sweep or a court player's court coverage. This is what stops a moving court
+        // sport (higher `motionMean`) from reading as strength just because both have bursty HR.
+        let lowMotion = rampDown(f.motionMean, 0.08, 0.20)
+        return 0.40 * bursty + 0.20 * noGait + 0.25 * lowMotion + 0.10 * hr + 0.05 * lowBurnRate
     }
 
     /// CYCLE: no walk/run gait, SMOOTH sustained elevated HR (low `hrCV`, unlike strength's sets), and
@@ -291,8 +338,11 @@ public enum WorkoutTypeClassifier {
         let noGait = gaitAbsenceScore(f)
         let smooth = rampDown(f.hrCV, 0.04, 0.10)
         let hr = rampUp(f.meanHRRPct ?? 55, 35, 65)
-        let stablePosture = rampDown(f.motionVariance, 0.02, 0.08)
-        return 0.30 * noGait + 0.30 * smooth + 0.25 * hr + 0.15 * stablePosture
+        // Hands rest on the bars: LOW wrist-motion magnitude. Weighted heavily so a smooth-HR, no-gait
+        // but HIGH-motion effort (swim/row) can't win cycle just by being steady — magnitude separates
+        // the two continuous-cardio families.
+        let stablePosture = rampDown(f.motionMean, 0.06, 0.20)
+        return (0.20 * noGait + 0.25 * smooth + 0.20 * hr + 0.35 * stablePosture) * nonFootGaitGate(f)
     }
 
     /// SKI: no walk/run gait, HIGHER and more variable posture signal than cycling (turns/terrain,
@@ -301,10 +351,46 @@ public enum WorkoutTypeClassifier {
     /// strength's sets).
     static func skiScore(_ f: WorkoutClassFeatures) -> Double {
         let noGait = gaitAbsenceScore(f)
-        let variablePosture = plateau(f.motionVariance, 0.06, 0.14, 0.45, 0.70)
+        let variablePosture = plateau(f.motionMean, 0.20, 0.35, 0.75, 1.10)
         let hr = plateau(f.meanHRRPct ?? 45, 20, 35, 85, 100)
         let intermittent = plateau(f.hrCV, 0.05, 0.09, 0.20, 0.32)
-        return 0.30 * noGait + 0.30 * variablePosture + 0.20 * hr + 0.20 * intermittent
+        return (0.30 * noGait + 0.30 * variablePosture + 0.20 * hr + 0.20 * intermittent) * nonFootGaitGate(f)
+    }
+
+    /// RHYTHMIC CARDIO (swim / row / elliptical): no walk/run gait, SMOOTH sustained elevated HR (like
+    /// cycle, unlike strength/court), but MORE wrist-motion than cycling (arms sweep continuously) and
+    /// that motion is REGULAR (low `motionCV`), not the start-stop bursts of court/strength. The motion
+    /// magnitude is what separates it from cycle; the HR smoothness is what separates it from court.
+    static func rhythmicCardioScore(_ f: WorkoutClassFeatures) -> Double {
+        let noGait = gaitAbsenceScore(f)
+        let smooth = rampDown(f.hrCV, 0.05, 0.11)
+        let hr = rampUp(f.meanHRRPct ?? 50, 30, 65)
+        // HIGH continuous wrist-motion magnitude — arms sweep through large arcs every stroke, far more
+        // than a cyclist's still hands. This is the signal that separates swim/row from cycle.
+        let activeMotion = rampUp(f.motionMean, 0.30, 0.60)
+        // Rhythmic = LOW burstiness of the intensity series (regular stroke cadence shape).
+        let regular = rampDown(f.motionCV, 0.35, 0.75)
+        return (0.22 * noGait + 0.28 * smooth + 0.25 * activeMotion + 0.15 * hr + 0.10 * regular) * nonFootGaitGate(f)
+    }
+
+    /// COURT / TEAM / HIIT (tennis / badminton / squash / basketball / boxing / HIIT): BURSTY HR
+    /// (rallies then pauses) like strength, but the athlete MOVES — some walk/run gait and more
+    /// sustained motion than a rack of lifts — and the bursts are IRREGULAR (high `motionCV`) start-stop
+    /// efforts rather than ski's big continuous turns. Some-gait + active-but-not-ski motion is what
+    /// separates it from strength (still-dominant, low motion) and ski (very high, smoother posture arc).
+    static func courtScore(_ f: WorkoutClassFeatures) -> Double {
+        let bursty = rampUp(f.hrCV, 0.07, 0.16)
+        // The player moves around the court — not still-dominant like a lifter between sets. Neutral 0.5
+        // when ticks are too sparse to tell (an absent signal must not read as evidence against court).
+        let someGait = f.tickCoverage >= minTickCoverage
+            ? rampUp(f.walkFraction + f.runFraction, 0.10, 0.45) : 0.5
+        // MODERATE wrist-motion magnitude: more than a still lifter, less than a swimmer's continuous
+        // sweep (court motion is pulled down by the pauses between points). Together with `someGait`
+        // this is what separates court from strength (low motion, still) below.
+        let motion = plateau(f.motionMean, 0.12, 0.20, 0.50, 0.85)
+        let irregular = rampUp(f.motionCV, 0.35, 0.75)
+        let hr = rampUp(f.meanHRRPct ?? 55, 35, 75)
+        return 0.30 * bursty + 0.22 * someGait + 0.20 * motion + 0.15 * irregular + 0.13 * hr
     }
 }
 
@@ -381,8 +467,8 @@ public enum WorkoutTypeFeatureExtractor {
         return WorkoutClassFeatures(
             durationSec: durationSec, meanHR: meanHR, peakHR: peakHR, meanHRRPct: meanHRRPct, hrCV: hrCV,
             stillFraction: stillFraction, walkFraction: walkFraction, runFraction: runFraction,
-            tickCoverage: tickCoverage, motionVariance: motionVariance, motionCV: motionCV,
-            kcalPerMin: kcalPerMin)
+            tickCoverage: tickCoverage, motionMean: motionMean, motionVariance: motionVariance,
+            motionCV: motionCV, kcalPerMin: kcalPerMin)
     }
 
     // MARK: - Small stats helpers (population variance/stdev; no external dependency)

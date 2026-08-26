@@ -1,5 +1,6 @@
 #if os(iOS)
 import SwiftUI
+import UIKit
 import StrandDesign
 import UserNotifications
 
@@ -91,6 +92,9 @@ struct StrandiOSApp: App {
                 // fixed-geometry tiles/gauges stay legible at the largest accessibility sizes rather than
                 // clipping; the common Larger-Text range still scales fully.
                 .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                #if DEBUG
+                .task { iOSRootView.renderLiveActivityBannerIfRequested() }
+                #endif
                 .onReceive(model.live.$heartRate) { _ in
                     // #911: anchor the Live Activity on the SAME shared `Repository.widgetAnchor` the
                     // Home/Lock widget and the watch snapshot use, so this fourth surface can't drift to a
@@ -339,6 +343,33 @@ private struct iOSRootView: View {
             showWhatsNew = true
         }
     }
+
+    #if DEBUG
+    /// DEBUG: with `--render-live-activity-banner`, render the REAL Live Activity Lock-Screen banner
+    /// (the same `LockScreenView` the widget uses) to a PNG in the app's Documents, so the exact card can
+    /// be captured headlessly in the Simulator (which can't be locked from the CLI). No-op otherwise.
+    @MainActor
+    static func renderLiveActivityBannerIfRequested() {
+        guard CommandLine.arguments.contains("--render-live-activity-banner") else { return }
+        let state = NOOPActivityAttributes.ContentState(
+            bpm: 137, recovery: 41, bonded: true, effort: 12, sport: "Running", zone: 3,
+            distanceM: 1319, speedMps: 1.79, startedAt: Date().addingTimeInterval(-737))
+        let card = LockScreenView(state: state, title: "Live HR")
+            .padding(16)
+            .frame(width: 380)
+            .background(StrandPalette.surfaceBase)
+            .environment(\.colorScheme, .dark)
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3
+        guard let img = renderer.uiImage, let data = img.pngData() else {
+            NSLog("‹LA-BANNER› render failed"); return
+        }
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("live-activity-banner.png")
+        try? data.write(to: url)
+        NSLog("‹LA-BANNER› wrote %@", url.path)
+    }
+    #endif
 }
 
 #if DEBUG

@@ -18,13 +18,13 @@ final class WorkoutTypeClassifierTests: XCTestCase {
                           meanHR: Double, peakHR: Int, meanHRRPct: Double?, hrCV: Double,
                           stillFraction: Double = 0, walkFraction: Double = 0, runFraction: Double = 0,
                           tickCoverage: Double = 0,
-                          motionVariance: Double, motionCV: Double = 0.5,
+                          motionMean: Double = 0.05, motionVariance: Double, motionCV: Double = 0.5,
                           kcalPerMin: Double?) -> WorkoutClassFeatures {
         WorkoutClassFeatures(
             durationSec: durationMin * 60, meanHR: meanHR, peakHR: peakHR, meanHRRPct: meanHRRPct,
             hrCV: hrCV, stillFraction: stillFraction, walkFraction: walkFraction, runFraction: runFraction,
-            tickCoverage: tickCoverage, motionVariance: motionVariance, motionCV: motionCV,
-            kcalPerMin: kcalPerMin)
+            tickCoverage: tickCoverage, motionMean: motionMean, motionVariance: motionVariance,
+            motionCV: motionCV, kcalPerMin: kcalPerMin)
     }
 
     // MARK: - RUN: two distinct injected patterns
@@ -33,7 +33,7 @@ final class WorkoutTypeClassifierTests: XCTestCase {
         // Dominant run-classified ticks, elevated %HRR, higher-impact motion, smooth (low-CV) HR.
         let f = features(meanHR: 155, peakHR: 168, meanHRRPct: 70, hrCV: 0.04,
                          stillFraction: 0.05, walkFraction: 0.1, runFraction: 0.8, tickCoverage: 0.9,
-                         motionVariance: 0.20, kcalPerMin: 11)
+                         motionMean: 0.28, motionVariance: 0.20, kcalPerMin: 11)
         let out = WorkoutTypeClassifier.classify(f)
         XCTAssertEqual(out.predictedClass, .run, "scores: \(out.scores)")
         XCTAssertGreaterThan(out.confidence, 0.4)
@@ -43,7 +43,7 @@ final class WorkoutTypeClassifierTests: XCTestCase {
         // No activity-class ticks at all (e.g. a WHOOP 4.0 capture) — must still read RUN from the
         // HR+motion fallback alone (high %HRR, smooth HR, high-impact motion).
         let f = features(meanHR: 160, peakHR: 172, meanHRRPct: 72, hrCV: 0.03,
-                         tickCoverage: 0, motionVariance: 0.25, kcalPerMin: 12)
+                         tickCoverage: 0, motionMean: 0.30, motionVariance: 0.25, kcalPerMin: 12)
         let out = WorkoutTypeClassifier.classify(f)
         XCTAssertEqual(out.predictedClass, .run, "scores: \(out.scores)")
     }
@@ -105,9 +105,10 @@ final class WorkoutTypeClassifierTests: XCTestCase {
 
     func testEasySpin_noTicksAtAll_isClassifiedCycle() {
         // No activity-class data whatsoever (tickCoverage 0) — must not be penalized as if "no gait"
-        // were disproven; HR+motion alone should still read CYCLE (smooth, stable, moderate HR).
-        let f = features(meanHR: 120, peakHR: 132, meanHRRPct: 40, hrCV: 0.04,
-                         tickCoverage: 0, motionVariance: 0.01, kcalPerMin: 6)
+        // were disproven; HR+motion alone should still read CYCLE (smooth, stable, low wrist motion,
+        // sustained moderate HR — above the walking %HRR band so it can't collapse to walk).
+        let f = features(meanHR: 138, peakHR: 150, meanHRRPct: 56, hrCV: 0.04,
+                         tickCoverage: 0, motionMean: 0.03, motionVariance: 0.01, kcalPerMin: 7)
         let out = WorkoutTypeClassifier.classify(f)
         XCTAssertEqual(out.predictedClass, .cycle, "scores: \(out.scores)")
     }
@@ -119,7 +120,7 @@ final class WorkoutTypeClassifierTests: XCTestCase {
         // interspersed with lift-ride rest) — more variable than cycle's steady spin.
         let f = features(durationMin: 120, meanHR: 128, peakHR: 165, meanHRRPct: 55, hrCV: 0.16,
                          stillFraction: 0.85, walkFraction: 0.1, runFraction: 0.05, tickCoverage: 0.6,
-                         motionVariance: 0.25, kcalPerMin: 7)
+                         motionMean: 0.55, motionVariance: 0.25, kcalPerMin: 7)
         let out = WorkoutTypeClassifier.classify(f)
         XCTAssertEqual(out.predictedClass, .ski, "scores: \(out.scores)")
     }
@@ -129,7 +130,7 @@ final class WorkoutTypeClassifierTests: XCTestCase {
         // high-variance, intermittent signature.
         let f = features(durationMin: 150, meanHR: 108, peakHR: 150, meanHRRPct: 38, hrCV: 0.14,
                          stillFraction: 0.85, walkFraction: 0.1, runFraction: 0.05, tickCoverage: 0.5,
-                         motionVariance: 0.20, kcalPerMin: 5)
+                         motionMean: 0.50, motionVariance: 0.20, kcalPerMin: 5)
         let out = WorkoutTypeClassifier.classify(f)
         XCTAssertEqual(out.predictedClass, .ski, "scores: \(out.scores)")
     }
@@ -175,12 +176,72 @@ final class WorkoutTypeClassifierTests: XCTestCase {
         let f = features(meanHR: 120, peakHR: 140, meanHRRPct: 40, hrCV: 0.06, motionVariance: 0.05,
                          kcalPerMin: 5)
         let out = WorkoutTypeClassifier.classify(f)
-        XCTAssertEqual(Set(out.scores.keys), Set([.walk, .run, .strength, .cycle, .ski]))
+        XCTAssertEqual(Set(out.scores.keys),
+                       Set([.walk, .run, .strength, .cycle, .ski, .rhythmicCardio, .court]))
         XCTAssertNil(out.scores[.other])
         for (_, v) in out.scores {
             XCTAssertGreaterThanOrEqual(v, 0)
             XCTAssertLessThanOrEqual(v, 1)
         }
+    }
+
+    // MARK: - RHYTHMIC CARDIO (swim / row / elliptical): smooth HR + active regular wrist motion, no gait
+
+    func testSwimSession_isClassifiedRhythmicCardio() {
+        // Pool swim: strap reads "still" (no walk/run gait), HR smooth & sustained, arms sweep
+        // continuously (moderate-high motion variance) in a REGULAR rhythm (low motionCV).
+        let f = features(meanHR: 148, peakHR: 160, meanHRRPct: 62, hrCV: 0.04,
+                         stillFraction: 0.9, walkFraction: 0.05, runFraction: 0.05, tickCoverage: 0.85,
+                         motionMean: 0.80, motionVariance: 0.18, motionCV: 0.25, kcalPerMin: 9)
+        let out = WorkoutTypeClassifier.classify(f)
+        XCTAssertEqual(out.predictedClass, .rhythmicCardio, "scores: \(out.scores)")
+    }
+
+    func testRowingErg_isClassifiedRhythmicCardio() {
+        // Indoor row: no gait, smooth strong HR, regular whole-body sweep — a touch burstier than swim
+        // but still steady, not sets-then-rest.
+        let f = features(meanHR: 152, peakHR: 168, meanHRRPct: 66, hrCV: 0.05,
+                         stillFraction: 0.88, walkFraction: 0.07, runFraction: 0.05, tickCoverage: 0.8,
+                         motionMean: 0.75, motionVariance: 0.22, motionCV: 0.30, kcalPerMin: 11)
+        let out = WorkoutTypeClassifier.classify(f)
+        XCTAssertEqual(out.predictedClass, .rhythmicCardio, "scores: \(out.scores)")
+    }
+
+    // MARK: - COURT / HIIT (tennis / badminton / squash): bursty HR + irregular active motion + some gait
+
+    func testTennisSession_isClassifiedCourt() {
+        // Tennis: bursty HR (rallies then pauses), player moves (some walk/run gait), irregular
+        // start-stop motion of moderate magnitude.
+        let f = features(meanHR: 138, peakHR: 172, meanHRRPct: 60, hrCV: 0.13,
+                         stillFraction: 0.55, walkFraction: 0.30, runFraction: 0.15, tickCoverage: 0.75,
+                         motionMean: 0.32, motionVariance: 0.12, motionCV: 0.65, kcalPerMin: 8)
+        let out = WorkoutTypeClassifier.classify(f)
+        XCTAssertEqual(out.predictedClass, .court, "scores: \(out.scores)")
+    }
+
+    func testBadmintonSession_isClassifiedCourt() {
+        // Badminton: sharper/faster bursts, higher HR variability, lots of quick footwork (gait).
+        let f = features(meanHR: 145, peakHR: 178, meanHRRPct: 66, hrCV: 0.15,
+                         stillFraction: 0.45, walkFraction: 0.35, runFraction: 0.20, tickCoverage: 0.7,
+                         motionMean: 0.30, motionVariance: 0.14, motionCV: 0.70, kcalPerMin: 9)
+        let out = WorkoutTypeClassifier.classify(f)
+        XCTAssertEqual(out.predictedClass, .court, "scores: \(out.scores)")
+    }
+
+    // MARK: - The user's real complaint: swim/court must NOT be mislabelled strength/other
+
+    func testSwim_isNotMislabelledStrength() {
+        let f = features(meanHR: 148, peakHR: 160, meanHRRPct: 62, hrCV: 0.04,
+                         stillFraction: 0.9, walkFraction: 0.05, runFraction: 0.05, tickCoverage: 0.85,
+                         motionMean: 0.80, motionVariance: 0.18, motionCV: 0.25, kcalPerMin: 9)
+        XCTAssertNotEqual(WorkoutTypeClassifier.classify(f).predictedClass, .strength)
+    }
+
+    func testSuggestedSportsMapCourtToRacquetFirst() {
+        XCTAssertEqual(CoarseWorkoutClass.court.suggestedSports.first, "HIIT")
+        XCTAssertTrue(CoarseWorkoutClass.court.suggestedSports.contains("Tennis"))
+        XCTAssertTrue(CoarseWorkoutClass.court.suggestedSports.contains("Badminton"))
+        XCTAssertEqual(CoarseWorkoutClass.rhythmicCardio.suggestedSports.first, "Pool swim")
     }
 
     // MARK: - HeuristicWorkoutClassifier (protocol seam) matches the static namespace

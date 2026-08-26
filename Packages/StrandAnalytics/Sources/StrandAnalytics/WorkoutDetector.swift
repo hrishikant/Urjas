@@ -55,15 +55,31 @@ public struct ExerciseSession: Equatable, Sendable {
     public let hrmaxSource: String
     public let caloriesKcal: Double?
     public let caloriesKJ: Double?
+    /// After-sync predicted sport (a `WorkoutCatalog` name) from `WorkoutTypeClassifier`, or nil when no
+    /// class cleared the confidence bar. Used to LABEL an otherwise-generic detected bout with its likely
+    /// sport (swim / court / gym / …) once the strap's wrist-motion + step streams have synced; never
+    /// overrides a user's own pick. `predictedClass` is the coarse family that produced it (for logs).
+    public let predictedSport: String?
+    public let predictedClass: String?
 
     public init(start: Int, end: Int, avgHR: Double, peakHR: Int, strain: Double?,
                 durationS: Double, zoneTimePct: [Int: Double], avgHRRPct: Double?,
                 hrmax: Double?, hrmaxSource: String,
-                caloriesKcal: Double?, caloriesKJ: Double?) {
+                caloriesKcal: Double?, caloriesKJ: Double?,
+                predictedSport: String? = nil, predictedClass: String? = nil) {
         self.start = start; self.end = end; self.avgHR = avgHR; self.peakHR = peakHR
         self.strain = strain; self.durationS = durationS; self.zoneTimePct = zoneTimePct
         self.avgHRRPct = avgHRRPct; self.hrmax = hrmax; self.hrmaxSource = hrmaxSource
         self.caloriesKcal = caloriesKcal; self.caloriesKJ = caloriesKJ
+        self.predictedSport = predictedSport; self.predictedClass = predictedClass
+    }
+
+    /// A copy carrying an after-sync sport prediction. Keeps every other field identical.
+    public func withPrediction(sport: String?, class cls: String?) -> ExerciseSession {
+        ExerciseSession(start: start, end: end, avgHR: avgHR, peakHR: peakHR, strain: strain,
+                        durationS: durationS, zoneTimePct: zoneTimePct, avgHRRPct: avgHRRPct,
+                        hrmax: hrmax, hrmaxSource: hrmaxSource, caloriesKcal: caloriesKcal,
+                        caloriesKJ: caloriesKJ, predictedSport: sport, predictedClass: cls)
     }
 }
 

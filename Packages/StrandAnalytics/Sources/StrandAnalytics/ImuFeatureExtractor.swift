@@ -66,19 +66,39 @@ public enum ImuFeatureExtractor {
         let jerk = (jerkSq / Double(n - 1)).squareRoot()
 
         // Cadence: normalized autocorrelation of the AC series over the gait-band lags; the strongest
-        // peak's frequency + strength. Strength = peak ACF / zero-lag ACF (0…1), so it's amplitude-scale
-        // free (a faint but rhythmic walk and a hard one both read as rhythmic).
+        // genuine PEAK's frequency + strength. The coefficient is normalized per-lag by the overlap count
+        // (so small lags aren't biased high) and divided by the zero-lag energy, making it amplitude-scale
+        // free (0…1) — a faint but rhythmic walk and a hard one both read as rhythmic. Crucially we accept
+        // a lag only if it is a LOCAL MAXIMUM of the autocorrelation curve: a slow, sub-band oscillation
+        // (e.g. a 0.7 Hz swim stroke or 0.45 Hz rowing pull) leaves the ACF still monotonically decaying
+        // through the band, which is NOT a peak and must read as "no gait cadence", not a band-edge match.
         let ac0 = ac.reduce(0) { $0 + $1 * $1 }
         var bestFreq: Double? = nil, bestStrength = 0.0
         if ac0 > 0 {
+            let acMean = ac0 / Double(n)
+            func corr(_ lag: Int) -> Double {
+                guard lag >= 1, lag <= n - 1 else { return -1 }
+                var s = 0.0
+                for i in 0..<(n - lag) { s += ac[i] * ac[i + lag] }
+                return (s / Double(n - lag)) / acMean
+            }
             let loLag = max(1, Int((Double(sampleRateHz) / cadenceBand.upperBound).rounded()))
-            let hiLag = min(n - 1, Int((Double(sampleRateHz) / cadenceBand.lowerBound).rounded()))
+            let hiLag = min(n - 2, Int((Double(sampleRateHz) / cadenceBand.lowerBound).rounded()))
             if loLag < hiLag {
+                // Slide a 3-lag window so each in-band lag can be tested against both neighbours (one lag
+                // beyond each band edge is evaluated purely for the local-max comparison). Take the FIRST
+                // (shortest-lag ⇒ highest-frequency) qualifying peak: that is the fundamental cadence; its
+                // period-multiple sub-harmonics show up as equally-strong peaks at longer lags once the
+                // overlap bias is removed, and we must not mistake them for the real step rate.
+                var prev = corr(loLag - 1)
+                var curr = corr(loLag)
                 for lag in loLag...hiLag {
-                    var s = 0.0
-                    for i in 0..<(n - lag) { s += ac[i] * ac[i + lag] }
-                    let strength = s / ac0
-                    if strength > bestStrength { bestStrength = strength; bestFreq = Double(sampleRateHz) / Double(lag) }
+                    let next = corr(lag + 1)
+                    if curr > prev, curr >= next, curr >= minCadenceStrength {
+                        bestStrength = curr; bestFreq = Double(sampleRateHz) / Double(lag)
+                        break
+                    }
+                    prev = curr; curr = next
                 }
             }
         }

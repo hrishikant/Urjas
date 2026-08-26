@@ -182,6 +182,23 @@ extension WhoopStore {
         }
     }
 
+    /// Delete ALL of one source's workouts (any sport) whose startTs is in [from, to].
+    /// Used for detected-bout re-derivation now that detected rows can carry a CONCRETE predicted
+    /// sport (swim / tennis / …) instead of the literal "detected" token — a sport-specific delete
+    /// would orphan those relabelled rows and duplicate them on the next pass. Matches on `source`
+    /// (the computed-detection id) so it only ever touches ephemeral detected bouts, never a user's
+    /// manual/imported rows. Returns rows deleted.
+    @discardableResult
+    public func deleteWorkouts(deviceId: String, source: String, from: Int, to: Int) async throws -> Int {
+        try syncWrite { db in
+            try db.execute(sql: """
+                DELETE FROM workout
+                WHERE deviceId = ? AND source = ? AND startTs >= ? AND startTs <= ?
+                """, arguments: [deviceId, source, from, to])
+            return db.changesCount
+        }
+    }
+
     /// Upsert Apple-Health daily aggregates. Natural key (deviceId, day). Returns rows changed.
     @discardableResult
     public func upsertAppleDaily(_ rows: [AppleDaily], deviceId: String) async throws -> Int {
