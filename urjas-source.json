@@ -17,13 +17,21 @@
       "tintColor": "#1FB6A6",
       "category": "healthcare-fitness",
       "screenshotURLs": [],
-      "version": "9.3.4",
+      "version": "9.3.5",
       "versionDate": "2026-08-26",
-      "versionDescription": "Stricter, more reliable auto workout detection. Workouts now only auto-start after ~7 minutes of genuinely sustained effort (no more false starts from standing up or reaching for a glass), and auto-end when your HR calms, when the strap comes off / disconnects for a few minutes, or after a 4-hour safety cap — so a session can never silently run for days.",
-      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.4/Urjas.ipa",
-      "size": 16849725,
+      "versionDescription": "Smarter sport prediction and a WHOOP-style workout Lock Screen. Auto-detected workouts now use your iPhone's motion, GPS speed and step cadence (with heart rate) to correctly name walks, runs and rides — and when it isn't sure, it labels the session 'Workout' and puts your most likely sports at the top of the picker instead of guessing wrong. The Live Activity is redesigned to match WHOOP: a running timer, live HR, a Zone 1–5 bar, and distance + speed for outdoor workouts.",
+      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.5/Urjas.ipa",
+      "size": 16888102,
       "minOSVersion": "17.0",
       "versions": [
+        {
+          "version": "9.3.5",
+          "date": "2026-08-26",
+          "localizedDescription": "Smarter sport prediction and a WHOOP-style workout Lock Screen. Auto-detected workouts now use your iPhone's motion, GPS speed and step cadence (with heart rate) to correctly name walks, runs and rides — and when it isn't sure, it labels the session 'Workout' and puts your most likely sports at the top of the picker instead of guessing wrong. The Live Activity is redesigned to match WHOOP: a running timer, live HR, a Zone 1–5 bar, and distance + speed for outdoor workouts.",
+          "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.5/Urjas.ipa",
+          "size": 16888102,
+          "minOSVersion": "17.0"
+        },
         {
           "version": "9.3.4",
           "date": "2026-08-26",
