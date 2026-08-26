@@ -110,7 +110,8 @@ struct LiveWorkoutView: View {
         .sheet(isPresented: $changingSport) {
             StartWorkoutSheet(title: String(localized: "Change sport"),
                               subtitle: String(localized: "Pick the activity you're doing. Ūrjas keeps the same HR recording."),
-                              actionVerb: String(localized: "Change")) { name in
+                              actionVerb: String(localized: "Change"),
+                              suggested: model.liveWorkoutSuggestions) { name in
                 model.setActiveWorkoutSport(name)
                 changingSport = false
             }

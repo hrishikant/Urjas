@@ -18,15 +18,26 @@ public struct NOOPActivityAttributes: ActivityAttributes {
         // workout is recording (the activity then falls back to the plain live-HR presentation).
         public var sport: String?
         public var zone: Int?
+        // WHOOP-style workout context (#): when a distance sport is recording, the live GPS distance (in
+        // METRES) and current speed (in m/s) so the Lock Screen can show DISTANCE + SPEED like WHOOP's
+        // workout Live Activity. Both nil for non-distance sports / no GPS. `startedAt` drives the live
+        // elapsed timer (`Text(timerInterval:)`) so the banner counts up on its own between pushes.
+        public var distanceM: Double?
+        public var speedMps: Double?
+        public var startedAt: Date?
 
         public init(bpm: Int?, recovery: Int?, bonded: Bool, effort: Int? = nil,
-                    sport: String? = nil, zone: Int? = nil) {
+                    sport: String? = nil, zone: Int? = nil,
+                    distanceM: Double? = nil, speedMps: Double? = nil, startedAt: Date? = nil) {
             self.bpm = bpm
             self.recovery = recovery
             self.bonded = bonded
             self.effort = effort
             self.sport = sport
             self.zone = zone
+            self.distanceM = distanceM
+            self.speedMps = speedMps
+            self.startedAt = startedAt
         }
     }
 

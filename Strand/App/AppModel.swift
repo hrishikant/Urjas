@@ -97,6 +97,10 @@ final class AppModel: ObservableObject {
     /// sport: it only arms for a `WorkoutCatalog.Sport.isDistanceSport`, and only actually captures once
     /// the user grants When-In-Use location.
     let gpsRecorder = GpsWorkoutRecorder()
+    /// Live phone-motion signals (motion class + step cadence) for the in-progress workout, fused with
+    /// GPS speed and the HR family by `SportRanker` to pre-rank the sport picker and to name auto-started
+    /// walk / run / ride sessions honestly. Runs only while a session is recording.
+    let liveMotion = LiveMotionMonitor()
     /// True while the active workout is a GPS-type session (drives the End-time route persist). Mirrors
     /// Android's `ActiveWorkout.gpsEnabled`.
     private var activeWorkoutIsGps = false
@@ -157,6 +161,38 @@ final class AppModel: ObservableObject {
     var liveWorkoutZone: Int? {
         guard activeWorkout != nil, let hr = bpm else { return nil }
         return HRZones.zones(maxHR: Double(profile.hrMax)).zoneNumber(forBPM: Double(hr))
+    }
+
+    /// The neutral label for an auto-started session whose sport we can't confidently name from movement
+    /// signals. WHOOP-style honesty: show "Workout" and let the user confirm the real sport in one tap,
+    /// rather than a confident wrong guess (swim → Strength). Free text, so it round-trips like any sport.
+    static let neutralWorkoutLabel = "Workout"
+
+    /// Current ground speed in m/s from the GPS route recorder, or nil when no route/pace is live. Derived
+    /// from live pace (sec/km); a movement signal for `SportRanker`.
+    var liveSpeedMps: Double? {
+        guard gpsRecorder.isRecording, let pace = gpsRecorder.paceSecPerKm, pace > 0 else { return nil }
+        return 1000.0 / pace
+    }
+
+    /// Live GPS distance (metres) for the in-progress distance workout, or nil when no route is being
+    /// captured — feeds the WHOOP-style Live Activity DISTANCE readout.
+    var liveWorkoutDistanceM: Double? {
+        guard activeWorkout != nil, gpsRecorder.isRecording, gpsRecorder.distanceM > 0 else { return nil }
+        return gpsRecorder.distanceM
+    }
+
+    /// Start instant of the in-progress workout — drives the Live Activity's self-counting elapsed timer.
+    var liveWorkoutStartedAt: Date? { activeWorkout?.start }
+
+    /// Best-first sport shortlist for the in-progress session, fusing phone motion + GPS speed + step
+    /// cadence + the HR-shape family (`SportRanker`). Drives the "Suggested" block at the top of the
+    /// active-workout sport picker so the sport the user is actually doing is one tap away.
+    var liveWorkoutSuggestions: [String] {
+        guard let w = activeWorkout else { return [] }
+        let family = WorkoutClassifier.classify(hr: w.samples, restingBpm: repo.today?.restingHr,
+                                                maxBpm: Double(profile.hrMax))?.family
+        return SportRanker.rank(liveMotion.signals(family: family, speedMps: liveSpeedMps))
     }
     /// Illness/strain early-warning (recent RHR up + HRV down + skin-temp up vs baseline). nil = clear.
     @Published var healthAlert: String?
@@ -696,12 +732,11 @@ final class AppModel: ObservableObject {
             let seed = autoStartBuf
                 .filter { $0.t >= onset }
                 .map { HRSample(ts: Int($0.t.timeIntervalSince1970), bpm: $0.bpm) }
-            // Best-effort HR-family guess for the initial label (the user can change it any time). We
-            // can't name a sport from HR alone, so we pre-fill the family's most likely sport.
-            let guess = WorkoutClassifier.classify(hr: seed, restingBpm: repo.today?.restingHr,
-                                                   maxBpm: Double(profile.hrMax))?
-                .suggestedSports.first ?? WorkoutCatalog.defaultSportName
-            startWorkout(sport: guess, autoStarted: true,
+            // Auto-started sessions are labelled neutrally ("Workout") — HR alone can't name a sport, so
+            // we don't show a confident wrong guess. As phone motion / GPS / cadence accrue over the next
+            // ~30–60 s, `refineAutoSport()` renames it to a confident walk/run/ride; otherwise it stays
+            // "Workout" and the pre-ranked picker is one tap away.
+            startWorkout(sport: Self.neutralWorkoutLabel, autoStarted: true,
                          backfillStart: onset, backfillSamples: seed)
         case .end:
             endWorkout()
@@ -906,9 +941,14 @@ final class AppModel: ObservableObject {
         // location (and on a Mac with no GPS it stays empty) , the session always banks HR + Effort
         // regardless. A non-distance sport (yoga, strength) never touches location at all.
         activeWorkoutIsGps = WorkoutCatalog.sport(named: resolved)?.isDistanceSport ?? false
+        // Auto-started sessions arm GPS regardless of the (neutral) label so ground speed can help name
+        // the sport (walk vs run vs ride) — it's stopped later if the user picks a non-distance sport.
+        if autoStarted { activeWorkoutIsGps = true }
         if activeWorkoutIsGps {
             gpsRecorder.start(startMs: Int64(started.timeIntervalSince1970 * 1000))
         }
+        // Sample phone motion + step cadence for the whole session (sport prediction / picker ranking).
+        liveMotion.start()
         // Make the session durable from the first instant (#529): persist it now so an OS kill right
         // after Start , before any HR sample lands , can still be rehydrated + ended on relaunch.
         persistActiveWorkout()
@@ -1016,14 +1056,17 @@ final class AppModel: ObservableObject {
         activeWorkout = nil
         activeWorkoutWasAuto = false
         activeWorkoutSportUserSet = false
-        // For an auto-started session the user never relabeled, re-run the HR-family guess over the FULL
-        // captured window (more data than the 3-min onset had) to pick the best label before saving.
-        if wasAuto && !sportUserSet, w.samples.count >= 10,
-           let g = WorkoutClassifier.classify(hr: w.samples, restingBpm: repo.today?.restingHr,
-                                              maxBpm: Double(profile.hrMax)),
-           let best = g.suggestedSports.first {
-            w.sport = best
+        // For an auto-started session the user never relabeled, take a final confident movement-based
+        // pick over the FULL window before saving. If we're still not sure, keep the neutral "Workout"
+        // label rather than inventing a sport (the user's stated preference: honest over wrong).
+        if wasAuto && !sportUserSet, w.samples.count >= 10 {
+            let family = WorkoutClassifier.classify(hr: w.samples, restingBpm: repo.today?.restingHr,
+                                                    maxBpm: Double(profile.hrMax))?.family
+            if let best = SportRanker.topPick(liveMotion.signals(family: family, speedMps: liveSpeedMps)) {
+                w.sport = best
+            }
         }
+        liveMotion.stop()
         // Stop the live auto-start monitor from instantly re-triggering on the elevated HR that's still
         // in the buffer , the key fix for "End workout does nothing" when pressed mid-effort (HR takes
         // minutes to drop). Clear the accumulated history and latch until HR falls back below the gate.
@@ -1123,6 +1166,30 @@ final class AppModel: ObservableObject {
         activeWorkout = w
         // Re-snapshot the durable session so a kill keeps the latest accumulated HR window (#529).
         persistActiveWorkout()
+        refineAutoSport()
+    }
+
+    /// Rename an auto-started, not-yet-user-labelled session once movement signals (phone motion + GPS
+    /// speed + step cadence, fused with the HR family) give a CONFIDENT sport. Honest by design: it only
+    /// upgrades away from the neutral "Workout" when `SportRanker.topPick` is sure (walk / run / ride);
+    /// gym / court / water sports stay "Workout" for the user to confirm. No-op for manual sessions or
+    /// once the user has picked a sport.
+    private func refineAutoSport() {
+        guard var w = activeWorkout, activeWorkoutWasAuto, !activeWorkoutSportUserSet else { return }
+        let family = WorkoutClassifier.classify(hr: w.samples, restingBpm: repo.today?.restingHr,
+                                                maxBpm: Double(profile.hrMax))?.family
+        guard let pick = SportRanker.topPick(liveMotion.signals(family: family, speedMps: liveSpeedMps)),
+              pick != w.sport else { return }
+        w.sport = pick
+        activeWorkout = w
+        persistActiveWorkout()
+        // Re-arm / stop GPS to match the newly-identified sport's distance flag (an auto-session already
+        // has GPS armed, so this mainly stops it if the pick turns out non-distance).
+        let nowGps = WorkoutCatalog.sport(named: pick)?.isDistanceSport ?? false
+        if !nowGps && activeWorkoutIsGps {
+            gpsRecorder.stop()
+            activeWorkoutIsGps = false
+        }
     }
 
     /// Drop the smoothing window and blank the hero number so a resume / re-attach shows ","

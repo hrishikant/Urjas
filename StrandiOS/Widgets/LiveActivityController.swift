@@ -27,7 +27,8 @@ final class LiveActivityController {
     /// live link, not the sticky "paired" flag) and a heart rate is present; ends the moment the link
     /// drops. Throttled to ~once every 2 s so we stay well under the Live Activity update budget.
     func update(bpm: Int?, recovery: Int?, connected: Bool, effort: Int? = nil,
-                sport: String? = nil, zone: Int? = nil) {
+                sport: String? = nil, zone: Int? = nil,
+                distanceM: Double? = nil, speedMps: Double? = nil, startedAt: Date? = nil) {
         guard authInfo.areActivitiesEnabled else { return }
 
         // Re-adopt an activity that outlived a previous app session. ActivityKit keeps Live Activities
@@ -55,7 +56,9 @@ final class LiveActivityController {
         guard bpm != nil else { return }
 
         let state = NOOPActivityAttributes.ContentState(bpm: bpm, recovery: recovery, bonded: connected,
-                                                        effort: effort, sport: sport, zone: zone)
+                                                        effort: effort, sport: sport, zone: zone,
+                                                        distanceM: distanceM, speedMps: speedMps,
+                                                        startedAt: startedAt)
         let staleDate = Date().addingTimeInterval(Self.staleAfter)
 
         if let activity {

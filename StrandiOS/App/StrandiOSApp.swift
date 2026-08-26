@@ -103,7 +103,10 @@ struct StrandiOSApp: App {
                         connected: model.live.connected,
                         effort: day?.strain.map { Int($0.rounded()) },
                         sport: model.liveWorkoutSport,
-                        zone: model.liveWorkoutZone
+                        zone: model.liveWorkoutZone,
+                        distanceM: model.liveWorkoutDistanceM,
+                        speedMps: model.liveSpeedMps,
+                        startedAt: model.liveWorkoutStartedAt
                     )
                 }
                 // End the Live Activity the moment the link drops, even if no further HR tick arrives.
@@ -117,7 +120,10 @@ struct StrandiOSApp: App {
                         connected: isConnected,
                         effort: day?.strain.map { Int($0.rounded()) },
                         sport: model.liveWorkoutSport,
-                        zone: model.liveWorkoutZone
+                        zone: model.liveWorkoutZone,
+                        distanceM: model.liveWorkoutDistanceM,
+                        speedMps: model.liveSpeedMps,
+                        startedAt: model.liveWorkoutStartedAt
                     )
                 }
                 // #911/#759: republish the Home/Lock-Screen widget whenever the dashboard caches actually

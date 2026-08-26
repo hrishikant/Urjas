@@ -391,17 +391,28 @@ struct StartWorkoutSheet: View {
     private let actionVerb: String
 
     init(title: String? = nil, subtitle: String? = nil, actionVerb: String? = nil,
+         suggested: [String] = [],
          onStart: @escaping (_ sport: String) -> Void) {
         self.onStart = onStart
+        self.suggested = suggested
         self.heading = title ?? String(localized: "Start a workout")
         self.explainer = subtitle
             ?? String(localized: "Pick a sport. Ūrjas records HR, peak, average and strain from the live feed.")
         self.actionVerb = actionVerb ?? String(localized: "Start")
+        // Default the action to the top movement-ranked suggestion when we have one, so the primary
+        // button is a single confirming tap; falls back to the catalogue default otherwise.
+        let firstSuggested = suggested.first { WorkoutCatalog.sport(named: $0) != nil }
+        _selected = State(initialValue: firstSuggested ?? WorkoutCatalog.defaultSportName)
     }
+
+    /// Best-first, movement-ranked sport names (from `SportRanker` via the model). When non-empty and the
+    /// user isn't searching, the top few show as a one-tap "Suggested" block above Recent / All. Only
+    /// catalogue-resolvable names render (a suggestion must map to a real row).
+    private let suggested: [String]
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
-    @State private var selected = WorkoutCatalog.defaultSportName
+    @State private var selected: String
 
     private var filtered: [WorkoutCatalog.Sport] { WorkoutCatalog.matching(query) }
     private var inputShape: RoundedRectangle { RoundedRectangle(cornerRadius: 10, style: .continuous) }
@@ -415,6 +426,16 @@ struct StartWorkoutSheet: View {
 
     private var showRecentSports: Bool {
         query.trimmingCharacters(in: .whitespaces).isEmpty && !recentSports.isEmpty
+    }
+
+    /// The top movement-ranked suggestions (catalogue-resolvable), capped so the block stays a quick
+    /// glance. Hidden once the user starts searching.
+    private var suggestedSports: [WorkoutCatalog.Sport] {
+        Array(suggested.compactMap { WorkoutCatalog.sport(named: $0) }.prefix(4))
+    }
+
+    private var showSuggested: Bool {
+        query.trimmingCharacters(in: .whitespaces).isEmpty && !suggestedSports.isEmpty
     }
 
     var body: some View {
@@ -450,12 +471,22 @@ struct StartWorkoutSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    if showSuggested {
+                        Text("Suggested").strandOverline()
+                            .padding(.horizontal, 12).padding(.top, 8)
+                        ForEach(suggestedSports) { sp in
+                            sportRow(sp)
+                        }
+                    }
                     if showRecentSports {
                         Text("Recent").strandOverline()
                             .padding(.horizontal, 12).padding(.top, 8)
                         ForEach(recentSports) { sp in
                             sportRow(sp)
                         }
+                        Text("All activities").strandOverline()
+                            .padding(.horizontal, 12).padding(.top, 8)
+                    } else if showSuggested {
                         Text("All activities").strandOverline()
                             .padding(.horizontal, 12).padding(.top, 8)
                     }
