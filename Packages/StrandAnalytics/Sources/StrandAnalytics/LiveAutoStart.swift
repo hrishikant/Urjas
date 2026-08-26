@@ -8,10 +8,17 @@ import Foundation
 /// session; this enum owns the stateless "should I start / end right now?" call so it can be unit
 /// tested against synthetic HR series without a strap or the app running.
 ///
-/// The gate is the SAME elevated threshold the detector uses: `restingHR + elevatedMarginBPM`. A
-/// candidate must hold the gate for `sustainMin` (shorter than the detector's 12 min so the live
-/// start is responsive, long enough to reject a flight of stairs), tolerating brief dips up to
-/// `maxDipS`. An auto-started session ends once HR holds BELOW the gate for `endCooldownMin`.
+/// The gate is the SAME elevated threshold the detector uses: `restingHR + elevatedMarginBPM`. To
+/// auto-start, HR must be elevated RIGHT NOW and have stayed *mostly* above the gate for the whole
+/// `sustainMin` window (`minStartDutyCycle`), with that window densely covered by real samples
+/// (`coverageGapS`) so a stale/sparse buffer can't fake a bout. This deliberately rejects the everyday
+/// transients (standing up, carrying something, a stressful moment) that a plain "no dip longer than X"
+/// rule used to chain into a fake sustained effort.
+///
+/// An auto-started session auto-ends once HR holds BELOW the gate for `endCooldownMin` (a lone stray
+/// spike no longer resets it — see `endMaxElevatedFrac`). The caller additionally ends a session that
+/// outlives `maxSessionMin` or whose strap has been off/disconnected for `strapOffEndS`, so a session
+/// can never silently run for days.
 public enum LiveAutoStart {
 
     // MARK: - Constants
@@ -21,14 +28,30 @@ public enum LiveAutoStart {
     public static let elevatedMarginBPM = AutoWorkoutDetector.elevatedMarginBPM
     /// Resting-HR fallback when the caller has no nightly RHR yet , shared with the detector.
     public static let defaultRestingHR = AutoWorkoutDetector.defaultRestingHR
-    /// A candidate must hold the elevated gate this long before a live session auto-starts.
-    public static let sustainMin: Double = 3.0
-    /// A dip below the gate no longer than this does NOT break the elevated run.
-    public static let maxDipS: Double = 90
+    /// HR must stay mostly above the elevated gate for this long before a live session auto-starts.
+    /// Deliberately strict (parity with a conservative watch) so brief everyday exertion never starts one.
+    public static let sustainMin: Double = 7.0
+    /// A dip below the gate no longer than this does NOT break the elevated run used to seed the onset.
+    public static let maxDipS: Double = 30
+    /// Fraction of samples in the `sustainMin` window that must be at/above the gate to auto-start. This
+    /// is the core false-start guard: intermittent spikes (stand up, reach for a glass) never reach it.
+    public static let minStartDutyCycle: Double = 0.85
+    /// The longest gap allowed between consecutive samples when judging start/end windows. A larger gap
+    /// means the strap wasn't actually streaming across the window, so we can't trust it — don't fire.
+    public static let coverageGapS: Double = 45
     /// An auto-started session auto-ends once HR holds below the gate continuously for this long.
     public static let endCooldownMin: Double = 5.0
+    /// A single stray spike must not reset the cool-down: up to this fraction of the cool-down window may
+    /// still read at/above the gate and the session will STILL end (as long as the newest sample is below).
+    public static let endMaxElevatedFrac: Double = 0.10
     /// Suppression window after an auto-end before a new auto-start can arm (owned by the caller).
     public static let rearmMin: Double = 5.0
+    /// Hard safety cap: the caller auto-ends an auto-started session that has run this long, no matter
+    /// what the HR is doing — a backstop against a session that never cools down.
+    public static let maxSessionMin: Double = 240
+    /// The caller auto-ends an auto-started session once the strap has been off / disconnected this long
+    /// (the live buffer stops feeding when unworn, so the HR cool-down path alone can't catch this case).
+    public static let strapOffEndS: Double = 180
 
     // MARK: - Inputs / output
 
@@ -65,19 +88,48 @@ public enum LiveAutoStart {
             let window = endCooldownMin * 60
             let cutoff = nowT - window
             // Require ≥`window` of history (a sample at/older than the cutoff proves the stream spans the
-            // whole cool-down) AND every sample within the window below the gate. NOTE: we must NOT test
-            // `nowT - earliest.t >= window` on the *filtered* set , after filtering to `t >= cutoff` the
-            // earliest is by definition within the window, so on a live ~1 Hz stream that test is ~always
-            // just under `window` and the session would never end. The coverage sample gates it instead.
+            // whole cool-down). NOTE: we must NOT test `nowT - earliest.t >= window` on the *filtered* set.
             guard buf.contains(where: { $0.t <= cutoff }) else { return .none }
             let recent = buf.filter { $0.t >= cutoff }
-            guard !recent.isEmpty, recent.allSatisfy({ $0.bpm < gate }) else { return .none }
+            // The newest reading must itself be below the gate (don't end mid-spike)...
+            guard let last = recent.last, last.bpm < gate else { return .none }
+            // ...and the cool-down must be genuine: at most `endMaxElevatedFrac` of it may still read at/
+            // above the gate, so ONE stray high sample (motion/optical noise) can't keep a session alive
+            // for hours the way the old "every sample below gate" rule did.
+            let elevated = recent.reduce(0) { $0 + ($1.bpm >= gate ? 1 : 0) }
+            guard Double(elevated) / Double(recent.count) <= endMaxElevatedFrac else { return .none }
             return .end
         }
 
-        guard let onset = onset(buf: buf, gate: gate),
-              nowT - onset >= sustainMin * 60 else { return .none }
-        return .start(onsetT: onset)
+        // START. Must be elevated RIGHT NOW, with a full sustain window of densely-sampled, mostly-
+        // elevated history behind it. The duty-cycle + coverage checks are what stop everyday transients
+        // (stand up, reach for a glass, a stressful moment) from ever chaining into a fake bout.
+        guard let last = buf.last, last.bpm >= gate else { return .none }
+        let sustainWindow = sustainMin * 60
+        let winStart = nowT - sustainWindow
+        // A sample at/older than the window start proves we actually have ≥`sustainMin` of history.
+        guard buf.contains(where: { $0.t <= winStart }) else { return .none }
+        let win = buf.filter { $0.t >= winStart }
+        guard win.count >= 2 else { return .none }
+        // The window must be continuously covered (no dropout longer than `coverageGapS`), else we never
+        // truly observed the effort and mustn't start off a stale/sparse buffer.
+        guard isDenselyCovered(win, from: winStart, to: nowT) else { return .none }
+        // Mostly elevated across the whole window , the false-start guard.
+        let elevated = win.reduce(0) { $0 + ($1.bpm >= gate ? 1 : 0) }
+        guard Double(elevated) / Double(win.count) >= minStartDutyCycle else { return .none }
+        return .start(onsetT: onset(buf: buf, gate: gate) ?? winStart)
+    }
+
+    /// True when `win` (samples with `t` in `[from, to]`) has no gap longer than `maxGap` anywhere from
+    /// `from` through the newest sample to `to` , i.e. the strap streamed continuously across the window.
+    static func isDenselyCovered(_ win: [Sample], from: Double, to: Double,
+                                 maxGap: Double = coverageGapS) -> Bool {
+        var prev = from
+        for s in win {
+            if s.t - prev > maxGap { return false }
+            prev = s.t
+        }
+        return to - prev <= maxGap
     }
 
     /// The earliest time from which HR has held `gate` continuously up to the newest sample, tolerating

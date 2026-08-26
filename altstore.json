@@ -17,13 +17,21 @@
       "tintColor": "#1FB6A6",
       "category": "healthcare-fitness",
       "screenshotURLs": [],
-      "version": "9.3.3",
-      "versionDate": "2026-08-19",
-      "versionDescription": "HR-based sport identification plus a workout Live Activity. Auto-started workouts now guess the sport from your heart-rate shape instead of always 'Other'; change the sport of a live or saved session; and while a workout records, the Lock Screen and Dynamic Island show the sport, live HR and current HR zone.",
-      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.3/Urjas.ipa",
-      "size": 16846617,
+      "version": "9.3.4",
+      "versionDate": "2026-08-26",
+      "versionDescription": "Stricter, more reliable auto workout detection. Workouts now only auto-start after ~7 minutes of genuinely sustained effort (no more false starts from standing up or reaching for a glass), and auto-end when your HR calms, when the strap comes off / disconnects for a few minutes, or after a 4-hour safety cap — so a session can never silently run for days.",
+      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.4/Urjas.ipa",
+      "size": 16849725,
       "minOSVersion": "17.0",
       "versions": [
+        {
+          "version": "9.3.4",
+          "date": "2026-08-26",
+          "localizedDescription": "Stricter, more reliable auto workout detection. Workouts now only auto-start after ~7 minutes of genuinely sustained effort (no more false starts from standing up or reaching for a glass), and auto-end when your HR calms, when the strap comes off / disconnects for a few minutes, or after a 4-hour safety cap — so a session can never silently run for days.",
+          "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.4/Urjas.ipa",
+          "size": 16849725,
+          "minOSVersion": "17.0"
+        },
         {
           "version": "9.3.3",
           "date": "2026-08-19",

@@ -122,6 +122,14 @@ final class AppModel: ObservableObject {
     /// appears to do nothing. Cleared the moment a below-gate sample arrives, so a later fresh bout can
     /// still auto-start.
     private var autoStartRequiresRest = false
+    /// The last moment the strap was worn, connected and streaming a valid sample. The auto-workout
+    /// watchdog uses this to end an auto-started session after the strap has been off/disconnected for
+    /// `LiveAutoStart.strapOffEndS` — the cool-down path alone can't catch that (the buffer stops feeding
+    /// once the strap is unworn), which is why a session could otherwise stay "live" for days.
+    private var lastLiveContact: Date?
+    /// Periodic watchdog that ends an auto-started session on the strap-off / disconnect and hard-cap
+    /// conditions, both of which can occur with NO further HR ticks to drive `evaluateAutoStart`.
+    private var autoWorkoutWatchdog: Timer?
     /// True once the user has explicitly chosen the active workout's sport (manual start, or the sport
     /// picker), so we don't overwrite their choice with the HR-family auto-guess when the session ends.
     private var activeWorkoutSportUserSet = false
@@ -270,6 +278,13 @@ final class AppModel: ObservableObject {
         // Smooth HR centrally so it's solid everywhere it's shown.
         live.$heartRate.sink { [weak self] _ in self?.ingestHR() }.store(in: &hrCancellables)
         live.$rr.sink { [weak self] _ in self?.ingestHR() }.store(in: &hrCancellables)
+
+        // Auto-workout watchdog: ends an auto-started session on strap-off/disconnect or the hard time
+        // cap, both of which can occur with no further HR ticks to drive evaluateAutoStart (#). A 30 s
+        // cadence is plenty for a 3-minute strap-off timeout / 4-hour cap and is negligible overhead.
+        autoWorkoutWatchdog = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkAutoWorkoutWatchdog() }
+        }
 
         // Physical-input + wear hooks (fired live by FrameRouter).
         live.onDoubleTap = { [weak self] in self?.handleDoubleTap() }
@@ -645,6 +660,9 @@ final class AppModel: ObservableObject {
         if let smoothed, live.worn {
             autoStartBuf.append((now, smoothed))
             autoStartBuf.removeAll { now.timeIntervalSince($0.t) > 20 * 60 }
+            // Fresh contact: strap is worn and delivering a valid sample. Drives the watchdog's
+            // strap-off timeout (see checkAutoWorkoutWatchdog).
+            if live.connected { lastLiveContact = now }
         }
         evaluateAutoStart()
         evaluateStress()
@@ -691,6 +709,33 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Watchdog for the two ways an auto-started session must end when the HR cool-down path CAN'T see
+    /// it: the strap has been off/disconnected too long (no more samples arrive, so `evaluateAutoStart`
+    /// stops running), or the session has simply run past the hard safety cap. Runs on a low-frequency
+    /// timer so it fires with no HR ticks at all. No-ops for manual sessions and when nothing is running.
+    private func checkAutoWorkoutWatchdog() {
+        guard let w = activeWorkout, activeWorkoutWasAuto else { return }
+        let now = Date()
+
+        // Hard safety cap — never let an auto-started session run forever.
+        if now.timeIntervalSince(w.start) >= LiveAutoStart.maxSessionMin * 60 {
+            endWorkout()
+            autoStartCooldownUntil = now.addingTimeInterval(LiveAutoStart.rearmMin * 60)
+            return
+        }
+
+        // Strap off / disconnected: end once we've had no live contact for `strapOffEndS`. When contact
+        // was never recorded (shouldn't happen for an auto-started session), fall back to the start time.
+        let inContact = live.worn && live.connected
+        if !inContact {
+            let since = lastLiveContact ?? w.start
+            if now.timeIntervalSince(since) >= LiveAutoStart.strapOffEndS {
+                endWorkout()
+                autoStartCooldownUntil = now.addingTimeInterval(LiveAutoStart.rearmMin * 60)
+            }
+        }
+    }
+
     #if DEBUG
     /// DEBUG harness for `--simulate-workout-hr`: drives the REAL auto-start path with a synthetic HR
     /// series (the Simulator has no BLE strap to stream from) and prints a PASS/FAIL trace so the
@@ -709,7 +754,7 @@ final class AppModel: ObservableObject {
 
         // SCENARIO A , sustained elevated HR should START a session seeded from the onset.
         let now = Date()
-        let elevatedSecs = Int(LiveAutoStart.sustainMin * 60) + 60          // 4 min ≥ 3 min sustain
+        let elevatedSecs = Int(LiveAutoStart.sustainMin * 60) + 60          // ≥ sustain window
         autoStartBuf = (0..<elevatedSecs).map { i in
             (t: now.addingTimeInterval(Double(-elevatedSecs + i)), bpm: gate + 45)   // well above gate
         }
@@ -722,7 +767,7 @@ final class AppModel: ObservableObject {
         }
 
         // SCENARIO B , sustained recovery below the gate should AUTO-END and save the session.
-        let recoverySecs = Int(LiveAutoStart.endCooldownMin * 60) + 60      // 6 min ≥ 5 min cooldown
+        let recoverySecs = Int(LiveAutoStart.endCooldownMin * 60) + 60      // ≥ cool-down window
         let end = Date()
         autoStartBuf = (0..<recoverySecs).map { i in
             (t: end.addingTimeInterval(Double(-recoverySecs + i)), bpm: resting + 5)   // below gate
@@ -783,6 +828,48 @@ final class AppModel: ObservableObject {
             log("REARM   ❌ FAIL , auto-start did not re-arm after a rest reset")
         }
         endWorkout()   // clean up
+
+        // SCENARIO F , intermittent transients (stand up, reach for a glass) must NOT auto-start. A brief
+        // spike every ~20 s over the whole window keeps HR below the gate ~75% of the time → below the
+        // 85% duty-cycle bar, so no session should begin (the reported false-start bug).
+        autoStartCooldownUntil = nil
+        autoStartRequiresRest = false
+        let fs = elevatedSecs
+        autoStartBuf = (0..<fs).map { i in
+            let elevated = (i % 20) < 5                                     // 5 s high, 15 s at rest
+            return (t: Date().addingTimeInterval(Double(-fs + i)), bpm: elevated ? gate + 45 : resting + 3)
+        }
+        // Make the newest sample elevated so only the duty-cycle guard (not "currently below gate") can reject.
+        autoStartBuf[autoStartBuf.count - 1] = (t: Date(), bpm: gate + 45)
+        evaluateAutoStart()
+        if activeWorkout == nil {
+            log("FALSE   ✅ PASS , intermittent spikes did not auto-start a workout")
+        } else {
+            log("FALSE   ❌ FAIL , a workout auto-started from intermittent transients")
+            endWorkout()
+        }
+
+        // SCENARIO G , a genuine cool-down with ONE stray spike must still AUTO-END (a lone noisy sample
+        // no longer keeps a session alive for hours).
+        autoStartCooldownUntil = nil
+        autoStartRequiresRest = false
+        autoStartBuf = (0..<elevatedSecs).map { i in
+            (t: Date().addingTimeInterval(Double(-elevatedSecs + i)), bpm: gate + 45)
+        }
+        evaluateAutoStart()                                                 // auto-starts
+        let startedForSpikeTest = activeWorkout != nil
+        let rec = Int(LiveAutoStart.endCooldownMin * 60) + 60
+        autoStartBuf = (0..<rec).map { i in
+            (t: Date().addingTimeInterval(Double(-rec + i)), bpm: resting + 5)
+        }
+        autoStartBuf[rec / 2] = (t: autoStartBuf[rec / 2].t, bpm: gate + 40)   // one stray spike mid-window
+        evaluateAutoStart()
+        if startedForSpikeTest, activeWorkout == nil {
+            log("SPIKE   ✅ PASS , cool-down with one stray spike still auto-ended")
+        } else {
+            log("SPIKE   ❌ FAIL , startedFirst=\(startedForSpikeTest) stillRunning=\(activeWorkout != nil)")
+            if activeWorkout != nil { endWorkout() }
+        }
     }
     #endif
 
