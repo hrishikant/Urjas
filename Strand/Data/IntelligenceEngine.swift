@@ -1109,6 +1109,9 @@ final class IntelligenceEngine: ObservableObject {
                 if workoutsTraceActive {
                     diagnosticSink?(WorkoutsTrace.detectedBoutLine(
                         verdict: "persisted", durMin: durMin, avgBpm: avgBpm), .workouts)
+                    if let t = s.predictionTrace {
+                        diagnosticSink?("  " + t, .workouts)
+                    }
                     if let imuReason {
                         diagnosticSink?("  imu-refine → \(sportToken): \(imuReason)", .workouts)
                     }

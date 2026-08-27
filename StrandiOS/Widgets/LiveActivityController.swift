@@ -1,6 +1,7 @@
 #if os(iOS)
 import Foundation
 import ActivityKit
+import os
 
 /// Starts, updates, and ends the live-HR Live Activity. The activity appears on the Lock Screen and
 /// in the Dynamic Island while the strap is bonded and streaming heart rate.
@@ -8,6 +9,16 @@ import ActivityKit
 final class LiveActivityController {
     private var activity: Activity<NOOPActivityAttributes>?
     private var lastPush: Date = .distantPast
+    /// Diagnostic signpost log (visible in Console.app / `log stream --predicate 'subsystem == "com.noopapp.noop"'`).
+    /// One line each time a start is BLOCKED (system auth off, in-app toggle off, link down) or THROWS,
+    /// so a "no Lock-Screen activity even though in-app HR works" report can be pinned to a cause.
+    private static let log = Logger(subsystem: "com.noopapp.noop", category: "LiveActivity")
+    /// Only log a given block reason once per controller lifetime so the ~1 Hz tick doesn't spam.
+    private var loggedReasons: Set<String> = []
+    private func note(_ reason: String) {
+        guard loggedReasons.insert(reason).inserted else { return }
+        Self.log.info("LiveActivity not showing: \(reason, privacy: .public)")
+    }
     /// Cached `ActivityAuthorizationInfo` — `update` runs at ~1 Hz off the live HR stream, and
     /// instantiating this system bridge per tick is needless allocation. ActivityKit's auth status
     /// only changes via Settings, so caching for the controller's lifetime is safe.
@@ -29,7 +40,10 @@ final class LiveActivityController {
     func update(bpm: Int?, recovery: Int?, connected: Bool, effort: Int? = nil,
                 sport: String? = nil, zone: Int? = nil,
                 distanceM: Double? = nil, speedMps: Double? = nil, startedAt: Date? = nil) {
-        guard authInfo.areActivitiesEnabled else { return }
+        guard authInfo.areActivitiesEnabled else {
+            note("iOS Live Activities permission OFF (Settings > Ūrjas > Live Activities)")
+            return
+        }
 
         // Re-adopt an activity that outlived a previous app session. ActivityKit keeps Live Activities
         // alive across launches/relaunches, but a fresh controller starts with `activity == nil`, so
@@ -42,6 +56,7 @@ final class LiveActivityController {
         // User opt-out (#336): if the in-app toggle is off, never start — and end any activity that's
         // already showing (the user just turned it off; this fires on the next ~1 Hz HR tick).
         guard UnitPrefs.liveActivityEnabled() else {
+            note("in-app Live Activity toggle OFF (Settings screen in Ūrjas)")
             if activity != nil { Task { await end() } }
             return
         }
@@ -79,6 +94,7 @@ final class LiveActivityController {
                 )
                 lastPush = Date()
             } catch {
+                note("Activity.request threw: \(error.localizedDescription)")
                 activity = nil
             }
             isStarting = false

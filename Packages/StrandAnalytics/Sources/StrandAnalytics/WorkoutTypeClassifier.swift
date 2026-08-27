@@ -246,6 +246,24 @@ public enum WorkoutTypeClassifier {
         ]
     }
 
+    /// Compact, PII-free one-line dump of a bout's feature vector + every class score + winner —
+    /// Workouts test-mode diagnostic so a real mislabel can be calibrated against the device's actual
+    /// numbers. Numbers only (durations, HR %, motion magnitudes, tick fractions, scores); no timestamps,
+    /// no location, nothing identifying. Kept terse for the exported log tail.
+    public static func diagnostic(_ f: WorkoutClassFeatures, _ p: WorkoutClassPrediction) -> String {
+        func n(_ x: Double) -> String { String(format: "%.2f", x) }
+        func no(_ x: Double?) -> String { x.map { String(format: "%.0f", $0) } ?? "-" }
+        let s = allScores(f)
+        func sc(_ c: CoarseWorkoutClass) -> String { n(s[c] ?? 0) }
+        let feats = "dur=\(no(f.durationSec))s hr=\(no(f.meanHR)) hrr=\(no(f.meanHRRPct))% hrCV=\(n(f.hrCV))"
+            + " motMean=\(n(f.motionMean)) motCV=\(n(f.motionCV)) motVar=\(n(f.motionVariance))"
+            + " tick=\(n(f.tickCoverage)) still=\(n(f.stillFraction)) walk=\(n(f.walkFraction)) run=\(n(f.runFraction))"
+            + " kcalMin=\(no(f.kcalPerMin))"
+        let scores = "walk=\(sc(.walk)) run=\(sc(.run)) str=\(sc(.strength)) cyc=\(sc(.cycle))"
+            + " ski=\(sc(.ski)) rhy=\(sc(.rhythmicCardio)) court=\(sc(.court))"
+        return "clf feat[\(feats)] scores[\(scores)] -> \(p.predictedClass.rawValue) conf=\(n(p.confidence))"
+    }
+
     // MARK: - Ramp helpers (fuzzy-membership style, matches the plain documented-threshold style
     // elsewhere in this package rather than an opaque weighted model)
 

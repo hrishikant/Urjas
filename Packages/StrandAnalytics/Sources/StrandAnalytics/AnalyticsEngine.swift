@@ -675,9 +675,16 @@ public enum AnalyticsEngine {
                     restingHR: restingHRDaily.map(Double.init), maxHR: maxHROverride,
                     caloriesKcal: s.caloriesKcal) else { return s }
                 let pred = WorkoutTypeClassifier.classify(feats)
+                // Diagnostic dump (Workouts test mode only, surfaced downstream): the REAL feature values
+                // + every class score + winner/confidence, so a mislabel (e.g. rowing/gym read as walk)
+                // can be calibrated against the device's actual numbers instead of guessed. Built for
+                // EVERY bout, including below-threshold ones, so a wrong-but-unconfident guess is visible.
+                let trace = WorkoutTypeClassifier.diagnostic(feats, pred)
                 guard pred.predictedClass != .other, pred.confidence >= 0.55,
-                      let sport = pred.predictedClass.suggestedSports.first else { return s }
-                return s.withPrediction(sport: sport, class: pred.predictedClass.rawValue)
+                      let sport = pred.predictedClass.suggestedSports.first else {
+                    return s.withPrediction(sport: nil, class: nil, trace: trace)
+                }
+                return s.withPrediction(sport: sport, class: pred.predictedClass.rawValue, trace: trace)
             }
 
         // ── Steps (APPROXIMATE) ───────────────────────────────────────────────

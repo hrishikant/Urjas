@@ -61,25 +61,33 @@ public struct ExerciseSession: Equatable, Sendable {
     /// overrides a user's own pick. `predictedClass` is the coarse family that produced it (for logs).
     public let predictedSport: String?
     public let predictedClass: String?
+    /// Diagnostic ONLY (Workouts test mode): a compact, PII-free dump of the classifier's real feature
+    /// vector + every class score + the winner/confidence for this bout, so a mislabel can be calibrated
+    /// against the device's actual numbers rather than guessed. nil in normal operation; never displayed.
+    public let predictionTrace: String?
 
     public init(start: Int, end: Int, avgHR: Double, peakHR: Int, strain: Double?,
                 durationS: Double, zoneTimePct: [Int: Double], avgHRRPct: Double?,
                 hrmax: Double?, hrmaxSource: String,
                 caloriesKcal: Double?, caloriesKJ: Double?,
-                predictedSport: String? = nil, predictedClass: String? = nil) {
+                predictedSport: String? = nil, predictedClass: String? = nil,
+                predictionTrace: String? = nil) {
         self.start = start; self.end = end; self.avgHR = avgHR; self.peakHR = peakHR
         self.strain = strain; self.durationS = durationS; self.zoneTimePct = zoneTimePct
         self.avgHRRPct = avgHRRPct; self.hrmax = hrmax; self.hrmaxSource = hrmaxSource
         self.caloriesKcal = caloriesKcal; self.caloriesKJ = caloriesKJ
         self.predictedSport = predictedSport; self.predictedClass = predictedClass
+        self.predictionTrace = predictionTrace
     }
 
-    /// A copy carrying an after-sync sport prediction. Keeps every other field identical.
-    public func withPrediction(sport: String?, class cls: String?) -> ExerciseSession {
+    /// A copy carrying an after-sync sport prediction (+ optional diagnostic trace). Keeps every other
+    /// field identical.
+    public func withPrediction(sport: String?, class cls: String?, trace: String? = nil) -> ExerciseSession {
         ExerciseSession(start: start, end: end, avgHR: avgHR, peakHR: peakHR, strain: strain,
                         durationS: durationS, zoneTimePct: zoneTimePct, avgHRRPct: avgHRRPct,
                         hrmax: hrmax, hrmaxSource: hrmaxSource, caloriesKcal: caloriesKcal,
-                        caloriesKJ: caloriesKJ, predictedSport: sport, predictedClass: cls)
+                        caloriesKJ: caloriesKJ, predictedSport: sport, predictedClass: cls,
+                        predictionTrace: trace ?? predictionTrace)
     }
 }
 
