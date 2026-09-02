@@ -20,6 +20,15 @@
       "screenshotURLs": [],
       "versions": [
         {
+          "version": "9.3.9",
+          "buildVersion": "221",
+          "date": "2026-09-02",
+          "localizedDescription": "NOOP 9.3.9. See the release notes for what changed.",
+          "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.9/Urjas-ios-unsigned-v9.3.9.ipa",
+          "size": 17029973,
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "9.3.8",
           "buildVersion": "220",
           "date": "2026-09-02",
@@ -1381,12 +1390,12 @@
           "NSHealthUpdateUsageDescription": "NOOP writes the metrics it computes from your strap back into Apple Health, on-device and only when you allow it."
         }
       },
-      "version": "9.3.8",
-      "buildVersion": "220",
+      "version": "9.3.9",
+      "buildVersion": "221",
       "versionDate": "2026-09-02",
-      "versionDescription": "NOOP 9.3.8. See the release notes for what changed.",
-      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.8/Urjas-ios-unsigned-v9.3.8.ipa",
-      "size": 17026176,
+      "versionDescription": "NOOP 9.3.9. See the release notes for what changed.",
+      "downloadURL": "https://github.com/hrishikant/Urjas/releases/download/v9.3.9/Urjas-ios-unsigned-v9.3.9.ipa",
+      "size": 17029973,
       "minOSVersion": "17.0"
     }
   ],
