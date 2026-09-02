@@ -291,7 +291,15 @@ public enum WorkoutTypeClassifier {
     /// read as evidence against a class (a WHOOP 4.0 capture has no @63 activity class at all).
     static func gaitAbsenceScore(_ f: WorkoutClassFeatures) -> Double {
         guard f.tickCoverage >= minTickCoverage else { return 0.5 }
-        return rampUp(f.stillFraction, 0.40, 0.75)
+        // Two independent pieces of "not on your feet" evidence: a HIGH still fraction AND a LOW
+        // walk/run tick fraction. The walk-tick term matters because a real walk logs still≈0.64 (which
+        // the still term alone would read as "gait absent") yet also logs walk≈0.33 — so folding in the
+        // walk/run fraction stops a genuine walk from being handed to a non-foot class (cycle/ski/
+        // strength). (Arm sports also trip the walk tick, but those resolve to COURT, which does not use
+        // this score.) Multiplicative so BOTH must indicate absence for a high result.
+        let stillEvidence = rampUp(f.stillFraction, 0.40, 0.75)
+        let lowGaitTicks = rampDown(f.walkFraction + f.runFraction, 0.20, 0.50)
+        return stillEvidence * lowGaitTicks
     }
 
     /// Multiplicative suppressor for the NON-FOOT classes (cycle / ski / rhythmic-cardio): when the
@@ -320,16 +328,42 @@ public enum WorkoutTypeClassifier {
     /// rarely pushes %HRR high) with modest motion variance (rhythmic but low-impact gait).
     static func walkScore(_ f: WorkoutClassFeatures) -> Double {
         let tick = rampUp(f.walkFraction, 0.15, 0.55)
-        let hr = plateau(f.meanHRRPct ?? 30, 5, 15, 35, 55)
-        let motion = plateau(f.motionMean, 0.01, 0.03, 0.15, 0.30)
-        let tickWeighted = 0.60 * tick + 0.25 * hr + 0.15 * motion
-        let fallback = 0.55 * hr + 0.45 * motion
+        // TICK-PATH HR band is wide (full 15→45, fading to 70 %HRR): when walk ticks are present a real
+        // brisk walk genuinely reaches ~55 %HRR (labelled walking_1) and must still score walk.
+        let hrTick = plateau(f.meanHRRPct ?? 30, 5, 15, 45, 70)
+        // FALLBACK HR band (no ticks) is NARROW (fades out by 45 %HRR): with no gait evidence at all, a
+        // moderate-HR window must NOT read as walk from HR alone — that's the ambiguous/cycle/strength
+        // crack, not a walk. (A no-tick high-HRR effort resolves via run/cardio, not walk.)
+        let hrFallback = plateau(f.meanHRRPct ?? 30, 5, 15, 25, 45)
+        // Full walk-motion credit only across a real walking magnitude band (0.12–0.25): a near-still
+        // window (motMean≈0.05) gets ZERO here so it can't read as walk on motion, while a labelled
+        // brisk walk (motMean≈0.31) still keeps partial credit as it fades out toward arm-sport levels.
+        let motion = plateau(f.motionMean, 0.05, 0.12, 0.25, 0.42)
+        // On the WHOOP 5/MG the @63 "walk" tick fires on WRIST motion, not leg gait: a badminton
+        // player logs walk≈0.85 while a real brisk walk logs walk≈0.33 (device-calibrated on labelled
+        // sessions). So trust the tick less than before (0.60→0.35) and lean on motion + HR shape.
+        let tickWeighted = 0.35 * tick + 0.30 * hrTick + 0.35 * motion
+        let fallback = 0.55 * hrFallback + 0.45 * motion
         let rel = tickReliability(f)
         // Walking is implausible at high %HRR: dominant walk ticks alone (a court player pacing between
         // points logs plenty) must not let WALK shadow a genuine high-intensity effort. Fades out over
         // 55→80 %HRR. Leaves real walks (low/moderate %HRR) untouched.
         let hrPlausible = rampDown(f.meanHRRPct ?? 30, 55, 80)
-        return (tickWeighted * rel + fallback * (1 - rel)) * hrPlausible
+        // Walking's wrist-motion magnitude tops out well below a racket/paddle sport's continuous swing:
+        // labelled brisk walks read motMean≈0.31 while badminton/tennis read 0.28–0.51 with far more
+        // sustained arc. Suppress WALK once motion climbs into that whole-arm range so an arm sport
+        // (which also trips the walk tick) can't win walk on tick + moderate-HR alone.
+        let motionPlausible = rampDown(f.motionMean, 0.38, 0.55)
+        // A walker's wrist is comparatively STILL between strides (labelled walk still≈0.64), whereas a
+        // court player is almost never still (still≈0.11–0.30) yet trips the same unreliable arm-motion
+        // walk tick. So when walk ticks are only MODERATE, require a walker-like still fraction (plateau
+        // full 0.50–0.68, fading out below 0.30 to reject tennis at 0.30, and above 0.68 to reject a
+        // high-still gym session). But when walk ticks strongly DOMINATE (≥0.80 — a clean walk on any
+        // device), trust them and skip the gate, so an idealized walk (walk≈1.0, still≈0.05) still reads
+        // walk. Neutral (1.0) too when ticks are too sparse to trust the still fraction at all.
+        let stillPlausible = (f.walkFraction >= 0.80 || f.tickCoverage < minTickCoverage)
+            ? 1.0 : plateau(f.stillFraction, 0.30, 0.50, 0.68, 0.85)
+        return (tickWeighted * rel + fallback * (1 - rel)) * hrPlausible * motionPlausible * stillPlausible
     }
 
     /// STRENGTH: no walk/run gait, BURSTY HR (sets separated by rest reads as high `hrCV`, unlike a
@@ -343,10 +377,11 @@ public enum WorkoutTypeClassifier {
         let hr = plateau(f.meanHRRPct ?? 45, 15, 30, 80, 100)
         let lowBurnRate = rampDown(f.kcalPerMin ?? 6, 6, 11)
         // LOW wrist-motion MAGNITUDE (not just low variability): a rack of lifts keeps the wrist near
-        // still between sets and swings it through small arcs during them — far less than a swim's
-        // continuous sweep or a court player's court coverage. This is what stops a moving court
-        // sport (higher `motionMean`) from reading as strength just because both have bursty HR.
-        let lowMotion = rampDown(f.motionMean, 0.08, 0.20)
+        // still between sets and swings it through small arcs during them — but labelled gym sessions on
+        // this device read motMean up to ~0.23, so the roll-off must extend past that (0.20→0.30) or a
+        // real gym session loses its own class to ski/court. Still well below a swim's continuous sweep
+        // (~0.41) or a court player's court coverage (0.28–0.51), which is what this term rejects.
+        let lowMotion = rampDown(f.motionMean, 0.12, 0.30)
         return 0.40 * bursty + 0.20 * noGait + 0.25 * lowMotion + 0.10 * hr + 0.05 * lowBurnRate
     }
 
@@ -369,7 +404,11 @@ public enum WorkoutTypeClassifier {
     /// strength's sets).
     static func skiScore(_ f: WorkoutClassFeatures) -> Double {
         let noGait = gaitAbsenceScore(f)
-        let variablePosture = plateau(f.motionMean, 0.20, 0.35, 0.75, 1.10)
+        // Ski requires a genuinely HIGH, sustained posture/motion signal (standing, edging through turns).
+        // The floor is raised hard (onset 0.45, full only past 0.60) so it can't steal a pool swim
+        // (motMean≈0.41) or a gym session (≈0.14–0.23): on this device ski is not a realistic label for
+        // an indoor user, so it must clear a high motion bar before it can win anything.
+        let variablePosture = plateau(f.motionMean, 0.45, 0.60, 0.90, 1.20)
         let hr = plateau(f.meanHRRPct ?? 45, 20, 35, 85, 100)
         let intermittent = plateau(f.hrCV, 0.05, 0.09, 0.20, 0.32)
         return (0.30 * noGait + 0.30 * variablePosture + 0.20 * hr + 0.20 * intermittent) * nonFootGaitGate(f)
@@ -381,13 +420,17 @@ public enum WorkoutTypeClassifier {
     /// magnitude is what separates it from cycle; the HR smoothness is what separates it from court.
     static func rhythmicCardioScore(_ f: WorkoutClassFeatures) -> Double {
         let noGait = gaitAbsenceScore(f)
-        let smooth = rampDown(f.hrCV, 0.05, 0.11)
-        let hr = rampUp(f.meanHRRPct ?? 50, 30, 65)
+        // Labelled pool-swim reads hrCV≈0.10 — smooth, but lap turns and rest between sets keep it from
+        // being as flat as a steady bike spin, so the smoothness band extends to 0.14 (was 0.11).
+        let smooth = rampDown(f.hrCV, 0.05, 0.14)
+        let hr = rampUp(f.meanHRRPct ?? 50, 25, 60)
         // HIGH continuous wrist-motion magnitude — arms sweep through large arcs every stroke, far more
-        // than a cyclist's still hands. This is the signal that separates swim/row from cycle.
-        let activeMotion = rampUp(f.motionMean, 0.30, 0.60)
-        // Rhythmic = LOW burstiness of the intensity series (regular stroke cadence shape).
-        let regular = rampDown(f.motionCV, 0.35, 0.75)
+        // than a cyclist's still hands. Labelled pool-swim reads motMean≈0.41, so full credit is reached
+        // by 0.45 (was 0.60) — otherwise a genuine swim under-scores its own class.
+        let activeMotion = rampUp(f.motionMean, 0.25, 0.45)
+        // Rhythmic = regular stroke cadence, but lap swimming with turns/rests reads a higher motionCV
+        // (≈0.87) than a steady erg, so the band is relaxed (0.50→1.10) so a real pool swim keeps credit.
+        let regular = rampDown(f.motionCV, 0.50, 1.10)
         return (0.22 * noGait + 0.28 * smooth + 0.25 * activeMotion + 0.15 * hr + 0.10 * regular) * nonFootGaitGate(f)
     }
 
@@ -397,18 +440,33 @@ public enum WorkoutTypeClassifier {
     /// efforts rather than ski's big continuous turns. Some-gait + active-but-not-ski motion is what
     /// separates it from strength (still-dominant, low motion) and ski (very high, smoother posture arc).
     static func courtScore(_ f: WorkoutClassFeatures) -> Double {
-        let bursty = rampUp(f.hrCV, 0.07, 0.16)
+        // Court sports vary in HR shape: tennis reads bursty (hrCV≈0.14) but badminton runs SMOOTH
+        // (hrCV≈0.10) — continuous rallies with little rest. So burstiness is treated as a mild bonus,
+        // not a requirement (weight cut 0.30→0.15, floor lowered so smooth play isn't penalised).
+        let bursty = rampUp(f.hrCV, 0.05, 0.16)
         // The player moves around the court — not still-dominant like a lifter between sets. Neutral 0.5
         // when ticks are too sparse to tell (an absent signal must not read as evidence against court).
+        // NOTE: the @63 walk tick over-reports arm motion on this device, so a court player logs a HIGH
+        // walk+run fraction (0.70–0.88) — which is exactly why this is a positive court signal here.
         let someGait = f.tickCoverage >= minTickCoverage
             ? rampUp(f.walkFraction + f.runFraction, 0.10, 0.45) : 0.5
-        // MODERATE wrist-motion magnitude: more than a still lifter, less than a swimmer's continuous
-        // sweep (court motion is pulled down by the pauses between points). Together with `someGait`
-        // this is what separates court from strength (low motion, still) below.
-        let motion = plateau(f.motionMean, 0.12, 0.20, 0.50, 0.85)
+        // SUSTAINED whole-arm motion magnitude: labelled court sessions read motMean≈0.28–0.51 — well
+        // above a still lifter (≤0.23) and into swim territory, so this is weighted heavily and the HR
+        // smoothness/gait signals separate court from swim. Full credit across the observed court band.
+        let motion = plateau(f.motionMean, 0.15, 0.26, 0.55, 0.90)
         let irregular = rampUp(f.motionCV, 0.35, 0.75)
-        let hr = rampUp(f.meanHRRPct ?? 55, 35, 75)
-        return 0.30 * bursty + 0.22 * someGait + 0.20 * motion + 0.15 * irregular + 0.13 * hr
+        // Court play sustains a solid %HRR (labelled 34–51%); reward it more so a moving racket sport
+        // out-scores a plain WALK that shares the (unreliable) walk tick.
+        let hr = rampUp(f.meanHRRPct ?? 55, 25, 65)
+        // A court player is almost never STILL — they cover the court continuously. A brisk walker
+        // (still≈0.64) and a lap swimmer with rest between sets (still≈0.62) both log a HIGH still
+        // fraction, whereas labelled court sessions read still≈0.11–0.30. Gate court on that: it fades
+        // out as the still fraction climbs (0.45→0.75), which is what stops a walk/swim — both of which
+        // trip the unreliable arm-motion walk tick — from being mislabelled a court sport. Neutral (1.0)
+        // when ticks are too sparse to trust the still fraction at all.
+        let activePresence = f.tickCoverage >= minTickCoverage
+            ? rampDown(f.stillFraction, 0.45, 0.75) : 1.0
+        return (0.15 * bursty + 0.24 * someGait + 0.30 * motion + 0.12 * irregular + 0.19 * hr) * activePresence
     }
 }
 
