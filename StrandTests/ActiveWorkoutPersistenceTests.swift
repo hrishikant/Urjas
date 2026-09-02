@@ -16,10 +16,12 @@ final class ActiveWorkoutPersistenceTests: XCTestCase {
         samples: [HRSample] = [HRSample(ts: 1_700_000_001, bpm: 120), HRSample(ts: 1_700_000_061, bpm: 145)],
         avgHr: Int = 133,
         peakHr: Int = 145,
-        liveStrain: Double = 8.4
+        liveStrain: Double = 8.4,
+        wasAuto: Bool? = nil
     ) -> ActiveWorkoutPersistence.Snapshot {
         ActiveWorkoutPersistence.Snapshot(startSec: startSec, sport: sport, samples: samples,
-                                          avgHr: avgHr, peakHr: peakHr, liveStrain: liveStrain)
+                                          avgHr: avgHr, peakHr: peakHr, liveStrain: liveStrain,
+                                          wasAuto: wasAuto)
     }
 
     /// A throwaway, isolated defaults suite so the test never touches the real store.
@@ -53,6 +55,25 @@ final class ActiveWorkoutPersistenceTests: XCTestCase {
         let decoded = ActiveWorkoutPersistence.decode(
             ActiveWorkoutPersistence.encode(snapshot(sport: "Traditional Strength Training")))
         XCTAssertEqual(decoded!.sport, "Traditional Strength Training")
+    }
+
+    func testWasAutoRoundTrips() {
+        // The auto-started flag MUST survive persist -> rehydrate: both auto-END paths are gated on it,
+        // so losing it means a resurrected auto session can never stop itself (the "ran for days" bug).
+        let auto = ActiveWorkoutPersistence.decode(ActiveWorkoutPersistence.encode(snapshot(wasAuto: true)))
+        XCTAssertEqual(auto?.wasAuto, true)
+        let manual = ActiveWorkoutPersistence.decode(ActiveWorkoutPersistence.encode(snapshot(wasAuto: false)))
+        XCTAssertEqual(manual?.wasAuto, false)
+    }
+
+    func testLegacySnapshotWithoutWasAutoDecodesAsNil() {
+        // A snapshot written by an older build has no `wasAuto` key. It must still decode (as nil, treated
+        // as manual by the caller) rather than being discarded as corrupt on the upgrade relaunch.
+        let legacy = Data(#"{"startSec":1700000000,"sport":"Tennis","samples":[],"avgHr":0,"peakHr":0,"liveStrain":0}"#.utf8)
+        let decoded = ActiveWorkoutPersistence.decode(legacy)
+        XCTAssertNotNil(decoded)
+        XCTAssertNil(decoded?.wasAuto)
+        XCTAssertEqual(decoded?.sport, "Tennis")
     }
 
     // MARK: - UserDefaults store / load / clear

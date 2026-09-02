@@ -26,6 +26,11 @@ enum ActiveWorkoutPersistence {
         var avgHr: Int
         var peakHr: Int
         var liveStrain: Double
+        /// Whether the session was begun by live auto-detection. Optional for backward-compatibility with
+        /// snapshots written before this field existed (they decode as nil → treated as manual). This MUST
+        /// survive a relaunch: both auto-END paths (`evaluateAutoStart` + the watchdog) are gated on it, so
+        /// a rehydrated auto session that lost this flag could never stop itself and would run for days.
+        var wasAuto: Bool?
     }
 
     /// The single `UserDefaults` key (JSON-encoded `Snapshot`). Namespaced like `moments`/`sleepMarks`.
@@ -54,6 +59,7 @@ enum ActiveWorkoutPersistence {
             avgHr: max(0, raw.avgHr),
             peakHr: max(0, raw.peakHr),
             liveStrain: raw.liveStrain.isFinite ? max(0, raw.liveStrain) : 0,
+            wasAuto: raw.wasAuto,
         )
     }
 

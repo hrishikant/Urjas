@@ -1083,10 +1083,17 @@ final class AppModel: ObservableObject {
                 samples: w.samples,
                 avgHr: w.avgHr,
                 peakHr: w.peakHr,
-                liveStrain: w.liveStrain))
+                liveStrain: w.liveStrain,
+                wasAuto: activeWorkoutWasAuto))
     }
 
-    /// If a manual workout was in flight when iOS killed the app, rebuild `activeWorkout` from the durable
+    /// How long an in-flight snapshot may sit idle (no fresh sample) before a relaunch treats it as an
+    /// already-finished session rather than one still in progress. Generous enough to resume a session
+    /// after a quick crash mid-workout (#529), but short enough that a session the app was killed during
+    /// and only reopened hours/days later is finalized to history instead of shown "live" forever.
+    static let rehydrateStaleThresholdS: TimeInterval = 15 * 60
+
+    /// If a workout was in flight when iOS killed the app, rebuild `activeWorkout` from the durable
     /// snapshot so reopening doesn't lose it , the session can still be ended + saved (#529). The Apple
     /// analogue of Android's `rehydrateActiveNonGpsWorkout`. No-op when a workout is already live (a live
     /// session wins over a stale snapshot) or nothing is stored. Called once from `init`.
@@ -1099,12 +1106,29 @@ final class AppModel: ObservableObject {
         w.peakHr = snap.peakHr
         w.liveStrain = snap.liveStrain
         activeWorkout = w
+        // Restore whether this was an auto-started session , WITHOUT it, both auto-END paths
+        // (`evaluateAutoStart` + the watchdog) no-op and the resurrected session runs until the user ends
+        // it by hand (the "workout ran for 2-3 days" bug). Older snapshots (nil) default to manual.
+        activeWorkoutWasAuto = snap.wasAuto ?? false
+        // When was this session last actually fed a sample? A snapshot idle longer than the stale
+        // threshold was NOT in progress when we reopened , the app was killed and only relaunched long
+        // after the effort ended. Finalize it trimmed to that last real sample so it lands in history with
+        // an honest duration instead of a phantom multi-day "live" card, then bail.
+        let lastActivity = snap.samples.map { TimeInterval($0.ts) }.max() ?? TimeInterval(snap.startSec)
+        if Date().timeIntervalSince1970 - lastActivity > Self.rehydrateStaleThresholdS {
+            endWorkout(endOverride: Date(timeIntervalSince1970: lastActivity))
+            return
+        }
+        // Resuming a genuinely in-progress session: give the strap a fresh grace period to reconnect
+        // before the strap-off watchdog can end it (`lastLiveContact` is nil on a cold launch, so the
+        // watchdog would otherwise measure "off" from the old start time and end it almost immediately).
+        lastLiveContact = Date()
     }
 
     /// Finish the active workout: finalize the GPS route (#524), score the captured HR window, and save it
     /// as a `WorkoutRow`. A session with no HR window AND no real GPS route is discarded quietly (parity
     /// with Android) , but a GPS-only walk with HR not streaming still saves. Double-buzz confirms.
-    func endWorkout() {
+    func endWorkout(endOverride: Date? = nil) {
         guard var w = activeWorkout else { return }
         let wasAuto = activeWorkoutWasAuto
         let sportUserSet = activeWorkoutSportUserSet
@@ -1152,7 +1176,7 @@ final class AppModel: ObservableObject {
             lastWorkout = nil
             return
         }
-        let end = Date()
+        let end = endOverride ?? Date()
         let avg = samples.isEmpty ? nil
             : Int((Double(samples.map(\.bpm).reduce(0, +)) / Double(samples.count)).rounded())
         let peak = samples.map(\.bpm).max()
@@ -1199,7 +1223,9 @@ final class AppModel: ObservableObject {
             event: "end", sportKey: WorkoutSource.traceSportKey(w.sport), hrSamples: samples.count,
             durationSec: Int(end.timeIntervalSince(w.start)),
             gpsPoints: wasGps ? gpsRecorder.pointCount : nil))
-        buzz(loops: 2)
+        // A user-visible End buzzes to confirm; a silent stale finalize on cold launch (endOverride set)
+        // must not buzz out of nowhere.
+        if endOverride == nil { buzz(loops: 2) }
         Task { [weak self] in
             guard let self else { return }
             if let store = await self.repo.storeHandle() {
