@@ -26,7 +26,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "9.3.1"
+    const val CURRENT_VERSION = "9.3.10"
 
     data class Release(
         val version: String,
@@ -37,6 +37,18 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "9.3.10",
+            title = uiString(R.string.l10n_app_changelog_your_today_screen_now_tells_you_1edd2126),
+            date = "September 2026",
+            items = listOf(
+                "**One clear call at the top.** Above Charge, Effort and Rest there's now a single plain-language line , push, train as normal, take it easier, or rest , so you get the answer before the numbers, the way WHOOP's daily outlook and Oura's daily message do.",
+                "**Every score is now framed against your own average.** Each score shows a small trend line and a \"+N / -N vs avg\" tag, so a number finally means something , is today better or worse than a normal day for you, not just a value in a vacuum.",
+                "**Streaks and a bit of encouragement.** A day streak appears once you've logged a few days in a row, with a short positive line keyed to how recovered you are today.",
+                "**A new wearer knows the app is still learning.** For your first two weeks a \"Calibrating: day N of 14\" note explains that scores get more accurate each day , so early, noisy numbers read as expected rather than broken.",
+                "**Auto-detected workouts now stop even when your heart rate stays up.** Sports like badminton or HIIT can leave your heart rate parked high long after you stop, which used to keep an auto-started session running. It now also ends the session once you've been still for a while, so it stops when you actually do.",
+            ),
+        ),
         Release(
             version = "9.3.1",
             title = uiString(R.string.l10n_app_changelog_widgets_stop_inventing_numbers_naps_count_4f7491bb),

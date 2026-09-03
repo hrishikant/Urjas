@@ -1874,4 +1874,5 @@
         <item quantity="other">A construir a tua linha de base. Cerca de %1$d mais noites até que a tua pontuação seja pessoal.</item>
     </plurals>
     <string name="l10n_app_changelog_widgets_stop_inventing_numbers_naps_count_4f7491bb">Os widgets deixam de inventar números, as sestas contam para a dívida de sono, e os indicadores Android falam a tua língua</string>
+    <string name="l10n_app_changelog_your_today_screen_now_tells_you_1edd2126">Your Today screen now tells you what to do, not just your numbers</string>
 </resources>
