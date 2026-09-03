@@ -16,7 +16,9 @@ import Foundation
 /// rule used to chain into a fake sustained effort.
 ///
 /// An auto-started session auto-ends once HR holds BELOW the gate for `endCooldownMin` (a lone stray
-/// spike no longer resets it — see `endMaxElevatedFrac`). The caller additionally ends a session that
+/// spike no longer resets it — see `endMaxElevatedFrac`), OR once the wearer has been continuously still
+/// for `motionEndStationaryMin` while HR sits only just above the gate (the motion-assisted end, for
+/// sports whose HR stays parked high after the effort stops). The caller additionally ends a session that
 /// outlives `maxSessionMin` or whose strap has been off/disconnected for `strapOffEndS`, so a session
 /// can never silently run for days.
 public enum LiveAutoStart {
@@ -52,6 +54,15 @@ public enum LiveAutoStart {
     /// The caller auto-ends an auto-started session once the strap has been off / disconnected this long
     /// (the live buffer stops feeding when unworn, so the HR cool-down path alone can't catch this case).
     public static let strapOffEndS: Double = 180
+    /// Motion-assisted end: how long the wearer must be continuously NON-vigorous (phone motion stationary /
+    /// automotive) before we may end on stillness alone. Deliberately longer than the HR cool-down because
+    /// this path fires while HR is still above the gate, so it must be sure the effort is genuinely over.
+    public static let motionEndStationaryMin: Double = 10.0
+    /// The HR grace band above the gate tolerated by the motion-assisted end. Some sports leave HR parked a
+    /// little above resting for a long while after the effort stops (e.g. badminton, HIIT); once the wearer
+    /// has been still for `motionEndStationaryMin` AND HR is within this band of the gate (i.e. not still
+    /// hammering), the session ends even though the HR-only cool-down never dropped it below the gate.
+    public static let motionEndGraceBPM = 15
 
     // MARK: - Inputs / output
 
@@ -78,8 +89,13 @@ public enum LiveAutoStart {
     /// - restingBpm: most recent nightly resting HR, or nil to use `defaultRestingHR`.
     /// - isRecording: whether a session is already running.
     /// - wasAuto: whether that running session was itself auto-started (only those auto-END).
+    /// - motionStationaryFor: seconds the wearer has been continuously non-vigorous (phone motion
+    ///   stationary/automotive), or nil when no trustworthy motion signal is available (permission denied,
+    ///   unsupported device, or actively moving). Enables the motion-assisted end for sports that leave HR
+    ///   elevated after the effort stops; nil preserves the pure HR-only behaviour.
     public static func decide(buf: [Sample], nowT: Double, restingBpm: Int?,
-                              isRecording: Bool, wasAuto: Bool) -> Decision {
+                              isRecording: Bool, wasAuto: Bool,
+                              motionStationaryFor: Double? = nil) -> Decision {
         let gate = (restingBpm ?? defaultRestingHR) + elevatedMarginBPM
 
         if isRecording {
@@ -91,14 +107,25 @@ public enum LiveAutoStart {
             // whole cool-down). NOTE: we must NOT test `nowT - earliest.t >= window` on the *filtered* set.
             guard buf.contains(where: { $0.t <= cutoff }) else { return .none }
             let recent = buf.filter { $0.t >= cutoff }
-            // The newest reading must itself be below the gate (don't end mid-spike)...
-            guard let last = recent.last, last.bpm < gate else { return .none }
-            // ...and the cool-down must be genuine: at most `endMaxElevatedFrac` of it may still read at/
-            // above the gate, so ONE stray high sample (motion/optical noise) can't keep a session alive
-            // for hours the way the old "every sample below gate" rule did.
-            let elevated = recent.reduce(0) { $0 + ($1.bpm >= gate ? 1 : 0) }
-            guard Double(elevated) / Double(recent.count) <= endMaxElevatedFrac else { return .none }
-            return .end
+            guard let last = recent.last else { return .none }
+            // HR-only end: the newest reading is below the gate...
+            if last.bpm < gate {
+                // ...and the cool-down is genuine: at most `endMaxElevatedFrac` of it may still read at/
+                // above the gate, so ONE stray high sample (motion/optical noise) can't keep a session
+                // alive for hours the way the old "every sample below gate" rule did.
+                let elevated = recent.reduce(0) { $0 + ($1.bpm >= gate ? 1 : 0) }
+                if Double(elevated) / Double(recent.count) <= endMaxElevatedFrac { return .end }
+            }
+            // Motion-assisted end: HR may still sit above the gate, but the wearer has been continuously
+            // still for `motionEndStationaryMin` and HR is within `motionEndGraceBPM` of the gate (not
+            // still working). This catches sports (badminton, HIIT) whose HR stays parked above the gate
+            // long after play stops, which the HR-only cool-down above never ends.
+            if let stationaryFor = motionStationaryFor,
+               stationaryFor >= motionEndStationaryMin * 60,
+               last.bpm < gate + motionEndGraceBPM {
+                return .end
+            }
+            return .none
         }
 
         // START. Must be elevated RIGHT NOW, with a full sustain window of densely-sampled, mostly-

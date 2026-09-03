@@ -159,6 +159,56 @@ final class LiveAutoStartTests: XCTestCase {
                                             isRecording: false, wasAuto: false), .none)
     }
 
+    // MARK: - Motion-assisted end (badminton/HIIT: HR parked above gate after effort stops)
+
+    /// gate = 85, grace band top = 85 + 15 = 100. 95 bpm sits above the gate (HR-only never ends) but
+    /// within the grace band, so 10 min of stillness ends it.
+    func testMotionEndsWhenStillAndHrParkedJustAboveGate() {
+        let b = buf(Array(repeating: 95, count: 700))         // flat, above gate, within grace
+        let d = LiveAutoStart.decide(buf: b, nowT: 0, restingBpm: resting, isRecording: true,
+                                     wasAuto: true, motionStationaryFor: 600)   // 10 min still
+        XCTAssertEqual(d, .end)
+    }
+
+    func testMotionDoesNotEndBeforeStationaryLongEnough() {
+        let b = buf(Array(repeating: 95, count: 700))
+        let d = LiveAutoStart.decide(buf: b, nowT: 0, restingBpm: resting, isRecording: true,
+                                     wasAuto: true, motionStationaryFor: 300)   // only 5 min still
+        XCTAssertEqual(d, .none)
+    }
+
+    func testMotionDoesNotEndWhenHrStillHigh() {
+        // 130 bpm is above the grace band top (100) → still working → stillness must NOT end it.
+        let b = buf(Array(repeating: 130, count: 700))
+        let d = LiveAutoStart.decide(buf: b, nowT: 0, restingBpm: resting, isRecording: true,
+                                     wasAuto: true, motionStationaryFor: 900)
+        XCTAssertEqual(d, .none)
+    }
+
+    func testNoMotionSignalPreservesHrOnlyBehaviour() {
+        // Same parked-above-gate HR but no motion signal → the pure HR-only rule keeps it running.
+        let b = buf(Array(repeating: 95, count: 700))
+        let d = LiveAutoStart.decide(buf: b, nowT: 0, restingBpm: resting, isRecording: true,
+                                     wasAuto: true, motionStationaryFor: nil)
+        XCTAssertEqual(d, .none)
+    }
+
+    func testMotionEndOnlyAppliesToAutoSessions() {
+        // A manual session (wasAuto false) never auto-ends, motion or not.
+        let b = buf(Array(repeating: 95, count: 700))
+        let d = LiveAutoStart.decide(buf: b, nowT: 0, restingBpm: resting, isRecording: true,
+                                     wasAuto: false, motionStationaryFor: 900)
+        XCTAssertEqual(d, .none)
+    }
+
+    func testHrOnlyEndStillWorksWithMotionSignalPresent() {
+        // HR genuinely recovered below gate → ends via the HR path even though motion is also still.
+        let b = buf(Array(repeating: 65, count: 360))
+        let d = LiveAutoStart.decide(buf: b, nowT: 0, restingBpm: resting, isRecording: true,
+                                     wasAuto: true, motionStationaryFor: 900)
+        XCTAssertEqual(d, .end)
+    }
+
     // MARK: - Coverage helper
 
     func testIsDenselyCoveredDetectsGap() {

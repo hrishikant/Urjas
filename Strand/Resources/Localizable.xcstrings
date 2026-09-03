@@ -37738,55 +37738,55 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recovery"
+            "value": "Charge"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recovery"
+            "value": "Charge"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recovery"
+            "value": "Charge"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recovery"
+            "value": "Charge"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recovery"
+            "value": "Charge"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recovery"
+            "value": "Charge"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recovery"
+            "value": "Charge"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recovery"
+            "value": "Charge"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recovery"
+            "value": "Charge"
           }
         }
       },
@@ -53485,55 +53485,55 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "STRAIN"
+            "value": "EFFORT"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "STRAIN"
+            "value": "EFFORT"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "STRAIN"
+            "value": "EFFORT"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "STRAIN"
+            "value": "EFFORT"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "STRAIN"
+            "value": "EFFORT"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "STRAIN"
+            "value": "EFFORT"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "STRAIN"
+            "value": "EFFORT"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "STRAIN"
+            "value": "EFFORT"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "STRAIN"
+            "value": "EFFORT"
           }
         }
       },
@@ -55028,55 +55028,55 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strain"
+            "value": "Effort"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strain"
+            "value": "Effort"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strain"
+            "value": "Effort"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strain"
+            "value": "Effort"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strain"
+            "value": "Effort"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strain"
+            "value": "Effort"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strain"
+            "value": "Effort"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strain"
+            "value": "Effort"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strain"
+            "value": "Effort"
           }
         }
       },
@@ -109625,55 +109625,55 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "SLEEP"
+            "value": "REST"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "SLEEP"
+            "value": "REST"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "SLEEP"
+            "value": "REST"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "SLEEP"
+            "value": "REST"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "SLEEP"
+            "value": "REST"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "SLEEP"
+            "value": "REST"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "SLEEP"
+            "value": "REST"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "SLEEP"
+            "value": "REST"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "SLEEP"
+            "value": "REST"
           }
         }
       },
@@ -117196,55 +117196,55 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleep"
+            "value": "Rest"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleep"
+            "value": "Rest"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleep"
+            "value": "Rest"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleep"
+            "value": "Rest"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleep"
+            "value": "Rest"
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleep"
+            "value": "Rest"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleep"
+            "value": "Rest"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleep"
+            "value": "Rest"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sleep"
+            "value": "Rest"
           }
         }
       },

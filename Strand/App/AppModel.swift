@@ -126,6 +126,11 @@ final class AppModel: ObservableObject {
     /// appears to do nothing. Cleared the moment a below-gate sample arrives, so a later fresh bout can
     /// still auto-start.
     private var autoStartRequiresRest = false
+    /// Wall-clock since which phone motion has been continuously NON-vigorous (stationary / automotive)
+    /// during an auto-started session. Drives `LiveAutoStart`'s motion-assisted end for sports whose HR
+    /// stays parked above the gate after the effort stops (e.g. badminton). Nil when actively moving, when
+    /// no motion signal is trustworthy (`.unknown`), or when no auto session is running.
+    private var autoMotionStationarySince: Date?
     /// The last moment the strap was worn, connected and streaming a valid sample. The auto-workout
     /// watchdog uses this to end an auto-started session after the strap has been off/disconnected for
     /// `LiveAutoStart.strapOffEndS` — the cool-down path alone can't catch that (the buffer stops feeding
@@ -743,8 +748,30 @@ final class AppModel: ObservableObject {
         // Don't re-arm on the tail of a just-ended session's cool-down HR.
         if !recording, let until = autoStartCooldownUntil, now < until { return }
 
+        // Track how long phone motion has been continuously non-vigorous during an auto session, so the
+        // decision core can end sports whose HR stays parked above the gate after the effort stops. Only a
+        // trustworthy motion class counts; `.unknown` (permission denied / unsupported) yields no signal.
+        let motionStationaryFor: Double?
+        if recording, activeWorkoutWasAuto {
+            switch liveMotion.motion {
+            case .running, .cycling, .walking:
+                autoMotionStationarySince = nil            // genuinely moving , reset the stillness clock
+                motionStationaryFor = nil
+            case .stationary, .automotive:
+                if autoMotionStationarySince == nil { autoMotionStationarySince = now }
+                motionStationaryFor = now.timeIntervalSince(autoMotionStationarySince ?? now)
+            case .unknown:
+                autoMotionStationarySince = nil            // no trustworthy signal , don't let it end a bout
+                motionStationaryFor = nil
+            }
+        } else {
+            autoMotionStationarySince = nil
+            motionStationaryFor = nil
+        }
+
         switch LiveAutoStart.decide(buf: buf, nowT: nowT, restingBpm: repo.today?.restingHr,
-                                    isRecording: recording, wasAuto: activeWorkoutWasAuto) {
+                                    isRecording: recording, wasAuto: activeWorkoutWasAuto,
+                                    motionStationaryFor: motionStationaryFor) {
         case .none:
             return
         case .start(let onsetT):
@@ -1151,6 +1178,7 @@ final class AppModel: ObservableObject {
         // minutes to drop). Clear the accumulated history and latch until HR falls back below the gate.
         autoStartBuf.removeAll()
         autoStartRequiresRest = true
+        autoMotionStationarySince = nil
         let wasGps = activeWorkoutIsGps
         activeWorkoutIsGps = false
         // Drop the durable snapshot the instant the session ends , whether it saves below or is discarded

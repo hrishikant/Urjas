@@ -48,6 +48,17 @@ struct LiquidTodayView: View {
     @State private var hrValues: [Double] = []     // hrBuckets since midnight → 5-min means
     @State private var workouts: [WorkoutRow] = [] // newest-first
 
+    // WHOOP/Oura-style comprehension aids (computed once in load(), read O(1) in body):
+    @State private var readinessCall: TodayHeadline.Call?      // the one-line "what to do today" (f1)
+    @State private var streakCurrent = 0                        // consecutive scored days (f5)
+    @State private var chargeDelta: BaselineCompare.Delta?      // today vs own 30-day average (f2)
+    @State private var effortDelta: BaselineCompare.Delta?
+    @State private var restDelta: BaselineCompare.Delta?
+    @State private var chargeTrend: [Double] = []              // trailing series for the mini sparkline (f3)
+    @State private var effortTrend: [Double] = []
+    @State private var restTrend: [Double] = []
+    @State private var calibration: CalibrationStatus.Progress?  // "day N of 14" for a new wearer (f6)
+
     // sheets / expanders
     @State private var guideSection: ScoreSection?
     @State private var customizationDestination: TodayCustomizationDestination?
@@ -258,6 +269,8 @@ struct LiquidTodayView: View {
                     // pinned above the reorderable block so an active manual workout is immediately visible
                     // and taps straight through to Live. Renders nothing when no workout is active.
                     ActiveWorkoutIndicatorSection()
+                    // Calibration progress for a new wearer (f6): "Ūrjas is still learning your baseline".
+                    if selectedDayOffset == 0, dataLoaded { calibrationBanner }
                     // Contextual "next best action" coaching prompt (WHOOP-style). Reads today's live
                     // Charge / Strain / Stress and surfaces one gentle suggestion, tapping through to the
                     // relevant screen. Today only, and only once data has settled so it never guesses.
@@ -269,7 +282,12 @@ struct LiquidTodayView: View {
                     // nothing and keeps its slot in the saved order.
                     ForEach(sectionOrder) { section in
                         switch section {
-                        case .hero: heroCard
+                        case .hero:
+                            VStack(spacing: 10) {
+                                heroHeadline   // one-line "what to do today" above the scores (f1)
+                                heroCard
+                                heroInsightsStrip  // per-score trend + vs-baseline + streak/affirmation (f2/f3/f5)
+                            }
                         case .liveSession: if liveSessionsBeta { liveSessionStartRow }
                         case .synthesis: synthesisSection
                         case .keyMetrics: keyMetricsSection
@@ -548,6 +566,137 @@ struct LiquidTodayView: View {
         }
         .buttonStyle(LiquidPressStyle())
         .accessibilityLabel("Start a live session. Beta. Silent strap coaching against today's Recovery.")
+    }
+
+    // MARK: - Hero comprehension aids (headline / trend / baseline / streak / calibration)
+
+    /// The single "what do I do today?" line, above the three scores (f1). WHOOP/Oura always lead with one
+    /// plain-language call before the raw numbers. Today only, and only once data has settled.
+    @ViewBuilder private var heroHeadline: some View {
+        if selectedDayOffset == 0, dataLoaded, let call = readinessCall {
+            Text(headlineText(call))
+                .font(StrandFont.subhead.weight(.semibold))
+                .foregroundStyle(StrandPalette.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    /// Under the vessels: a mini trend + "vs your average" per score (f2/f3), and a streak/affirmation
+    /// line (f5). Columns align under Charge / Effort / Sleep (same HStack spacing as `heroCard`).
+    @ViewBuilder private var heroInsightsStrip: some View {
+        if selectedDayOffset == 0, dataLoaded {
+            VStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 4) {
+                    scoreInsightColumn(trend: chargeTrend, gradient: StrandPalette.recoveryGradient, delta: chargeDelta)
+                    scoreInsightColumn(trend: effortTrend, gradient: StrandPalette.strainGradient, delta: effortDelta)
+                    scoreInsightColumn(trend: restTrend, gradient: StrandPalette.restGradient, delta: restDelta)
+                }
+                if let affirm = affirmationLine() {
+                    HStack(spacing: 6) {
+                        if Affirmation.showStreak(streakCurrent) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "flame.fill").font(.system(size: 10, weight: .bold))
+                                Text("\(streakCurrent)").font(StrandFont.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(StrandPalette.effortColor)
+                            .accessibilityLabel(Text("\(streakCurrent) day streak"))
+                        }
+                        Text(affirm).font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+    }
+
+    /// One column of the insights strip: a tiny sparkline over the trailing series and a "vs avg" caption.
+    @ViewBuilder private func scoreInsightColumn(trend: [Double], gradient: Gradient,
+                                                 delta: BaselineCompare.Delta?) -> some View {
+        VStack(spacing: 3) {
+            if trend.count >= 2 {
+                Sparkline(values: trend, gradient: gradient, lineWidth: 1.6,
+                          showsArea: true, showsHead: false, showsHover: false)
+                    .frame(height: 20)
+            } else {
+                Color.clear.frame(height: 20)
+            }
+            if let cap = baselineCaption(delta) {
+                HStack(spacing: 2) {
+                    Image(systemName: cap.icon).font(.system(size: 8, weight: .bold))
+                    Text(cap.text).font(StrandFont.overlineScaled(9)).tracking(0.4)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                }
+                .foregroundStyle(StrandPalette.textSecondary)
+                .accessibilityLabel(Text(cap.accessibility))
+            } else {
+                Text(" ").font(StrandFont.overlineScaled(9))
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// "Calibrating: day N of T" banner for a new wearer (f6), styled like the other top-of-Today banners.
+    @ViewBuilder private var calibrationBanner: some View {
+        if let cal = calibration {
+            HStack(spacing: 10) {
+                Image(systemName: "gauge.with.dots.needle.33percent")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(StrandPalette.effortColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Calibrating: day \(cal.day) of \(cal.target)")
+                        .font(StrandFont.subhead.weight(.semibold))
+                        .foregroundStyle(StrandPalette.textPrimary)
+                    Text("Ūrjas is still learning your baseline. Scores get more accurate each day you wear the strap.")
+                        .font(StrandFont.caption)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(StrandPalette.surfaceRaised.opacity(0.6))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(StrandPalette.effortColor.opacity(0.3), lineWidth: 1))
+            )
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func headlineText(_ call: TodayHeadline.Call) -> String {
+        switch call {
+        case .push:     return String(localized: "You're primed. A good day to push.")
+        case .maintain: return String(localized: "Balanced. Train as you normally would.")
+        case .easy:     return String(localized: "Running low. Take it a little easier today.")
+        case .rest:     return String(localized: "Recovery is down. Prioritise rest today.")
+        }
+    }
+
+    private func affirmationLine() -> String? {
+        switch Affirmation.tone(charge: chargeDisplay.pct) {
+        case .peak:   return String(localized: "Recovery is peaking. Make it count.")
+        case .strong: return String(localized: "You're recovering well.")
+        case .steady: return String(localized: "Holding steady. Keep it up.")
+        case .low:    return String(localized: "Be kind to yourself today.")
+        case .none:   return nil
+        }
+    }
+
+    private func baselineCaption(_ delta: BaselineCompare.Delta?) -> (text: String, icon: String, accessibility: String)? {
+        guard let delta else { return nil }
+        let n = Int(abs(delta.diff).rounded())
+        switch BaselineCompare.classify(delta) {
+        case .above: return ("+\(n) vs avg", "arrow.up",
+                             String(localized: "\(n) above your average"))
+        case .below: return ("-\(n) vs avg", "arrow.down",
+                             String(localized: "\(n) below your average"))
+        case .inLine: return (String(localized: "in line"), "equal.circle",
+                              String(localized: "in line with your average"))
+        }
     }
 
     private var heroCard: some View {
@@ -1293,6 +1442,36 @@ struct LiquidTodayView: View {
             "sleep_performance": restSeries.filter { $0.day >= sparkCutoff && $0.day <= selectedDayKey }
                 .map { ($0.day, $0.value) },
         ]
+        // WHOOP/Oura-style comprehension aids (features 1,2,3,5,6). Only meaningful for today; a navigated
+        // past day shows the bare vessels (its own row is the whole story), matching the synthesis copy.
+        if selectedDayOffset == 0 {
+            readinessCall = cachedReadiness.flatMap { TodayHeadline.call(for: $0.level) }
+            // Trailing series (chronological) for the mini trend under each vessel (f3).
+            let recentDays = daysSnapshot.suffix(30)
+            chargeTrend = recentDays.compactMap { $0.recovery }
+            effortTrend = recentDays.compactMap { $0.strain }
+            restTrend = restSeries.suffix(30).map { $0.value }
+            // vs-baseline: today's value against the mean of PRIOR days, today excluded (f2).
+            let priorDays = daysSnapshot.filter { $0.day < selectedDayKey }.suffix(30)
+            chargeDelta = BaselineCompare.delta(current: chargeDisplay.pct,
+                                                history: priorDays.compactMap { $0.recovery })
+            effortDelta = BaselineCompare.delta(current: displayDay?.strain,
+                                                history: priorDays.compactMap { $0.strain })
+            restDelta = BaselineCompare.delta(current: restScore,
+                                              history: restSeries.filter { $0.day < selectedDayKey }
+                                                  .suffix(30).map { $0.value })
+            // Streak of consecutive scored days, anchored on the real logical today (f5).
+            streakCurrent = StreakCalculator.streaks(
+                dayKeys: daysSnapshot.map(\.day),
+                qualified: daysSnapshot.map { $0.recovery != nil },
+                today: Repository.logicalDayKey(Date())).current
+            // Calibration progress: distinct days that already carry a Charge score (f6).
+            let scoredDays = daysSnapshot.reduce(into: 0) { n, d in if d.recovery != nil { n += 1 } }
+            calibration = CalibrationStatus.progress(daysWithData: scoredDays)
+        } else {
+            readinessCall = nil; chargeDelta = nil; effortDelta = nil; restDelta = nil
+            chargeTrend = []; effortTrend = []; restTrend = []; streakCurrent = 0; calibration = nil
+        }
         stress = await Task.detached(priority: .utility) {
             StressModel(days: daysSnapshot, stored: storedStress)?.score
         }.value
