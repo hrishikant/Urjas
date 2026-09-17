@@ -394,6 +394,115 @@ public enum WorkoutDetector {
         return sessions
     }
 
+    // MARK: - HR-only detection (app-asleep / no-motion fallback)
+
+    /// Elevated-HR gate margin (bpm over resting) for the HR-only pass. Higher than the motion pass's
+    /// `hrMarginBPM` (15) because with NO motion corroboration the bar must be "genuinely working", not
+    /// merely "off the floor" — this is the same gate the live auto-start uses (resting + 30).
+    public static let hrOnlyMarginBPM: Double = Double(AutoWorkoutDetector.elevatedMarginBPM)
+    /// Minimum sustained-elevation length for an HR-only bout to count (seconds). The user's rule:
+    /// "HR was high for at least 10 minutes".
+    public static let hrOnlyMinElevatedS: Double = 600.0
+    /// A dip below the gate (or a sensor dropout) no longer than this doesn't break one bout — so a brief
+    /// mid-game rest / water break doesn't split a single session into two.
+    public static let hrOnlyGapToleranceS: Double = 120.0
+
+    /// Detect workouts from HEART RATE ALONE, for windows the motion-gated `detect(...)` can't see:
+    /// e.g. a sport played while the app was suspended (the phone recorded no motion) or a band that
+    /// banked no/low gravity for the window. A bout is a run of samples at/above `resting + gate` whose
+    /// elevated span (first→last elevated sample, bridging dips ≤ `gapToleranceS`) lasts ≥ `minElevatedS`.
+    ///
+    /// This is deliberately additive and conservative: the caller MERGES these under the richer
+    /// motion-detected bouts and drops any HR-only bout overlapping one, so a session the motion pass
+    /// already found is never double-counted. Analysis (zones / strain / calories / avg+peak HR) matches
+    /// the motion path exactly. Pure + unit-tested.
+    public static func detectHROnly(hr: [HRSample],
+                                    restingHR: Double? = nil,
+                                    maxHR: Double? = nil,
+                                    age: Double? = nil,
+                                    profile: UserProfile? = nil,
+                                    gateMarginBPM: Double = hrOnlyMarginBPM,
+                                    minElevatedS: Double = hrOnlyMinElevatedS,
+                                    gapToleranceS: Double = hrOnlyGapToleranceS) -> [ExerciseSession] {
+        let hrSeg = cleanHR(hr)
+        guard hrSeg.count >= 2 else { return [] }
+
+        let restHR = restingHR ?? deriveRestingHR(hrSeg)
+        let gate = restHR + gateMarginBPM
+
+        let effMaxHR: Double?
+        let hrmaxSource: String
+        if let m = maxHR {
+            effMaxHR = m; hrmaxSource = "caller"
+        } else {
+            let (est, src) = StrainScorer.estimateHRmax(hrSeg.map { $0.bpm }, age: age)
+            effMaxHR = est == 0.0 ? nil : est
+            hrmaxSource = src
+        }
+
+        // Group elevated samples into bouts, bridging dips/dropouts up to gapToleranceS. The bout span
+        // is [first elevated ts, last elevated ts]; only elevated samples advance the "last" edge, so a
+        // long non-elevated tail can never pad a bout's duration.
+        var bouts: [(Int, Int)] = []
+        var boutStart: Int? = nil
+        var lastElevated: Int? = nil
+        for s in hrSeg where s.bpm >= gate {
+            if let last = lastElevated, Double(s.ts - last) > gapToleranceS {
+                if let bs = boutStart, let le = lastElevated { bouts.append((bs, le)) }
+                boutStart = s.ts
+            } else if boutStart == nil {
+                boutStart = s.ts
+            }
+            lastElevated = s.ts
+        }
+        if let bs = boutStart, let le = lastElevated { bouts.append((bs, le)) }
+
+        var sessions: [ExerciseSession] = []
+        for (start, end) in bouts {
+            if Double(end - start) < minElevatedS { continue }
+            let window = hrSeg.filter { $0.ts >= start && $0.ts <= end }
+            let bpms = window.map { $0.bpm }
+            guard !bpms.isEmpty else { continue }
+            let hrSamples = window.map { HRSample(ts: $0.ts, bpm: Int($0.bpm.rounded())) }
+
+            var zonePct: [Int: Double] = [:]
+            var avgHRR: Double? = nil
+            if let m = effMaxHR, m > restHR {
+                (zonePct, avgHRR) = boutIntensity(window, restingHR: restHR, maxHR: m)
+            }
+
+            var kcal: Double? = nil
+            var kj: Double? = nil
+            if let profile = profile {
+                let (k, j) = Calories.estimateBoutCalories(hrSamples, profile: profile,
+                                                           hrmax: effMaxHR, restingHR: restHR)
+                kcal = k; kj = j
+            }
+
+            let avg = bpms.reduce(0, +) / Double(bpms.count)
+            let peak = Int(bpms.max()!.rounded())
+            let strain = StrainScorer.strain(hrSamples, maxHR: effMaxHR, restingHR: restHR)
+
+            sessions.append(ExerciseSession(
+                start: start, end: end, avgHR: avg, peakHR: peak, strain: strain,
+                durationS: Double(end - start), zoneTimePct: zonePct, avgHRRPct: avgHRR,
+                hrmax: effMaxHR, hrmaxSource: hrmaxSource, caloriesKcal: kcal, caloriesKJ: kj))
+        }
+        return sessions
+    }
+
+    /// Merge HR-only bouts UNDER motion-detected ones: keep every motion bout, then add each HR-only bout
+    /// that doesn't overlap any motion bout (half-open overlap). Motion detection is richer (it has the
+    /// movement signature), so it always wins a time collision. Pure + order-preserving (motion first,
+    /// then the surviving HR-only bouts in time order).
+    public static func mergeHROnly(motion: [ExerciseSession], hrOnly: [ExerciseSession]) -> [ExerciseSession] {
+        guard !hrOnly.isEmpty else { return motion }
+        let survivors = hrOnly.filter { h in
+            !motion.contains { m in h.start < m.end && m.start < h.end }
+        }
+        return motion + survivors
+    }
+
     /// #510: backfill ONLY the avgHr/maxHr/energyKcal/strain fields `real` doesn't already have, from a
     /// detected bout's own computed values — never touching a field that's already present, whether
     /// typed by the user, imported, or filled by an earlier pass. `real` unchanged (`==`) means it

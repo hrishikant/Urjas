@@ -657,18 +657,34 @@ public enum AnalyticsEngine {
         // a later pass re-reads it through the next night window (which ends at ≈ noon). Falls back
         // to the night window for pure-function callers/tests. restingHR still comes from the night's
         // sleep sessions; nil → WorkoutDetector derives it from the day's own HR floor.
-        let workouts = WorkoutDetector.detect(
+        //
+        // Two passes, merged: (1) the motion+HR detector (richer — needs the strap's gravity), then
+        // (2) an HR-ONLY fallback that catches a sustained-elevated-HR bout the motion pass can't see —
+        // a sport played while the app was suspended (no phone motion) or a window the band banked no
+        // gravity for. `mergeHROnly` keeps every motion bout and adds only the HR-only bouts that don't
+        // overlap one, so a session already found is never double-counted. Both feed the SAME sport
+        // prediction + persistence path below, so an HR-only bout surfaces as a normal detected workout.
+        let motionWorkouts = WorkoutDetector.detect(
             hr: dayHr ?? hr, gravity: dayGravity ?? gravity,
             restingHR: restingHRDaily.map(Double.init),
             maxHR: maxHROverride,
             age: profile.age > 0 ? profile.age : nil,
             profile: profile)
+        let hrOnlyWorkouts = WorkoutDetector.detectHROnly(
+            hr: dayHr ?? hr,
+            restingHR: restingHRDaily.map(Double.init),
+            maxHR: maxHROverride,
+            age: profile.age > 0 ? profile.age : nil,
+            profile: profile)
+        let workouts = WorkoutDetector.mergeHROnly(motion: motionWorkouts, hrOnly: hrOnlyWorkouts)
             .map { s -> ExerciseSession in
                 // After-sync sport prediction (#court/swim/gym): fuse the window's HR shape + the strap's
                 // wrist-motion (gravity) + its own step activity-class into a coarse class, then map to a
                 // concrete sport to LABEL the bout. Confidence-gated; below the bar we leave it generic so
                 // the UI shows "Activity" rather than a wrong guess. Uses the day streams already in hand,
                 // so no extra store read. NEVER touches a user-picked sport (that's a manual/strap row).
+                // An HR-only bout usually has no gravity, so the extractor works from HR (+ any steps)
+                // alone; below the confidence bar it stays generic "Activity", which the user relabels.
                 guard let feats = WorkoutTypeFeatureExtractor.extract(
                     hr: dayHr ?? hr, gravity: dayGravity ?? gravity, steps: daySteps ?? steps,
                     start: s.start, end: s.end,

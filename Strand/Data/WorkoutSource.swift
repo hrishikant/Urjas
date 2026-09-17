@@ -96,6 +96,31 @@ enum WorkoutSource: Equatable {
     /// The "startTs:endTs" token persisted for a dismissed row (caller appends it to the defaults list).
     static func dismissedToken(for row: WorkoutRow) -> String { "\(row.startTs):\(row.endTs)" }
 
+    // MARK: - Acknowledged detected bouts (Today confirm card)
+    //
+    // The Today "We found a workout" card surfaces freshly detected bouts (source "-noop") so the user
+    // can Confirm / relabel / reject. Once acted on, the bout's token is recorded here so a re-derived
+    // (still-detected) bout doesn't nag again on the next open. Durable in UserDefaults, same shape as
+    // the dismissed-span list. Rejecting also writes a DISMISSED span (durably hides it); acknowledging
+    // a Confirm relabels it to a manual row (no longer detected) , this list covers the "keep as generic
+    // Activity" case and de-nag in general.
+
+    /// UserDefaults key holding acknowledged detected-bout tokens ("startTs:endTs").
+    static let acknowledgedDefaultsKey = "workouts.ackDetected"
+
+    /// Pure: the detected bouts to show on the confirm card , source "-noop", window ended within the
+    /// last `withinS` seconds of `now`, not already acknowledged. Newest first. Non-detected rows and
+    /// stale/old bouts are dropped so the card only nags about genuinely new activity.
+    static func pendingDetected(_ rows: [WorkoutRow], acknowledged: Set<String>,
+                                now: Int, withinS: Int = 24 * 3_600) -> [WorkoutRow] {
+        let cutoff = now - withinS
+        return rows
+            .filter { classify($0.source) == .detected }
+            .filter { $0.endTs >= cutoff }
+            .filter { !acknowledged.contains(dismissedToken(for: $0)) }
+            .sorted { $0.startTs > $1.startTs }
+    }
+
     /// Read-time filter: a DETECTED row overlapping any dismissed span is hidden. Imported / manual
     /// rows are never auto-hidden (the user deletes those outright), so dismissal only applies to the
     /// re-derived detected source. Half-open overlap test: `row.start < span.end && span.start < row.end`.

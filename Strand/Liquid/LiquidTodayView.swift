@@ -58,6 +58,7 @@ struct LiquidTodayView: View {
     @State private var effortTrend: [Double] = []
     @State private var restTrend: [Double] = []
     @State private var calibration: CalibrationStatus.Progress?  // "day N of 14" for a new wearer (f6)
+    @State private var pendingDetected: [WorkoutRow] = []        // newly auto-detected bouts to confirm
 
     // sheets / expanders
     @State private var guideSection: ScoreSection?
@@ -271,6 +272,9 @@ struct LiquidTodayView: View {
                     ActiveWorkoutIndicatorSection()
                     // Calibration progress for a new wearer (f6): "Ūrjas is still learning your baseline".
                     if selectedDayOffset == 0, dataLoaded { calibrationBanner }
+                    // "We found a workout" confirm card: freshly auto-detected bouts from a completed sync
+                    // (incl. HR-only sessions played while the app was asleep). Confirm / relabel / reject.
+                    if selectedDayOffset == 0, dataLoaded, !pendingDetected.isEmpty { detectedWorkoutsCard }
                     // Contextual "next best action" coaching prompt (WHOOP-style). Reads today's live
                     // Charge / Strain / Stress and surfaces one gentle suggestion, tapping through to the
                     // relevant screen. Today only, and only once data has settled so it never guesses.
@@ -1517,6 +1521,151 @@ struct LiquidTodayView: View {
 
         // First load done — bring the hero gauges + sky to life now the launch churn has settled.
         if !dataLoaded { withAnimation(.easeIn(duration: 0.4)) { dataLoaded = true } }
+        await loadPendingDetected()
+    }
+
+    // MARK: - "We found a workout" confirm card (#retro-detect)
+
+    /// Recompute the pending detected bouts from the store: source "-noop", ended within the last 24h,
+    /// not yet acknowledged. Drives `detectedWorkoutsCard`. Cheap, safe to call on every load()/appear.
+    private func loadPendingDetected() async {
+        let rows = await repo.workoutRows(days: 2)
+        let acked = Set(UserDefaults.standard.stringArray(forKey: WorkoutSource.acknowledgedDefaultsKey) ?? [])
+        let pending = WorkoutSource.pendingDetected(rows, acknowledged: acked,
+                                                    now: Int(Date().timeIntervalSince1970))
+        await MainActor.run { self.pendingDetected = pending }
+    }
+
+    private func acknowledge(_ row: WorkoutRow) {
+        let token = WorkoutSource.dismissedToken(for: row)
+        var acked = UserDefaults.standard.stringArray(forKey: WorkoutSource.acknowledgedDefaultsKey) ?? []
+        if !acked.contains(token) {
+            acked.append(token)
+            UserDefaults.standard.set(acked, forKey: WorkoutSource.acknowledgedDefaultsKey)
+        }
+    }
+
+    /// Confirm a bout. When `sport` is a concrete pick (or the engine's baked-in guess is concrete),
+    /// relabel it to that sport (becomes a manual row); otherwise keep it as the neutral "Activity".
+    private func confirmDetected(_ row: WorkoutRow, sport: String? = nil) {
+        let chosen = (sport ?? row.sport).trimmingCharacters(in: .whitespaces)
+        acknowledge(row)
+        Task {
+            if !chosen.isEmpty, chosen != "detected", chosen != "Activity" {
+                await repo.relabelDetected(row, sport: chosen)
+            }
+            await repo.refresh()
+            await loadPendingDetected()
+        }
+    }
+
+    private func rejectDetected(_ row: WorkoutRow) {
+        acknowledge(row)
+        Task {
+            await repo.dismissDetected(row)
+            await repo.refresh()
+            await loadPendingDetected()
+        }
+    }
+
+    @ViewBuilder private var detectedWorkoutsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "figure.run.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(StrandPalette.effortColor)
+                Text(pendingDetected.count > 1 ? "We found \(pendingDetected.count) workouts" : "We found a workout")
+                    .font(StrandFont.subhead.weight(.semibold))
+                    .foregroundStyle(StrandPalette.textPrimary)
+                Spacer(minLength: 0)
+            }
+            ForEach(pendingDetected.prefix(3), id: \.startTs) { row in
+                detectedRow(row)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(StrandPalette.surfaceRaised.opacity(0.6))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(StrandPalette.effortColor.opacity(0.3), lineWidth: 1))
+        )
+    }
+
+    @ViewBuilder private func detectedRow(_ row: WorkoutRow) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(WorkoutSource.displaySport(row.sport))
+                    .font(StrandFont.body.weight(.semibold))
+                    .foregroundStyle(StrandPalette.textPrimary)
+                Text("\u{2022} \(detectedDurationText(row))")
+                    .font(StrandFont.caption)
+                    .foregroundStyle(StrandPalette.textSecondary)
+                Spacer(minLength: 0)
+                Text(detectedTimeText(row))
+                    .font(StrandFont.caption)
+                    .foregroundStyle(StrandPalette.textSecondary)
+            }
+            if let stats = detectedStatsText(row) {
+                Text(stats)
+                    .font(StrandFont.caption)
+                    .foregroundStyle(StrandPalette.textSecondary)
+            }
+            HStack(spacing: 8) {
+                Button(action: { confirmDetected(row) }) {
+                    Text("Confirm")
+                        .font(StrandFont.caption.weight(.semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(Capsule().fill(StrandPalette.effortColor.opacity(0.9)))
+                        .foregroundStyle(Color.white)
+                }
+                .buttonStyle(.plain)
+                Menu {
+                    ForEach(detectedSportChoices, id: \.self) { s in
+                        Button(s) { confirmDetected(row, sport: s) }
+                    }
+                } label: {
+                    Text("Change sport")
+                        .font(StrandFont.caption.weight(.semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(Capsule().strokeBorder(StrandPalette.textSecondary.opacity(0.4), lineWidth: 1))
+                        .foregroundStyle(StrandPalette.textPrimary)
+                }
+                Spacer(minLength: 0)
+                Button(action: { rejectDetected(row) }) {
+                    Text("Not a workout")
+                        .font(StrandFont.caption)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private var detectedSportChoices: [String] {
+        ["Run", "Walk", "Cycling", "Strength", "HIIT", "Yoga", "Swimming", "Rowing", "Elliptical", "Other"]
+    }
+
+    private func detectedDurationText(_ row: WorkoutRow) -> String {
+        let secs = row.durationS ?? Double(max(0, row.endTs - row.startTs))
+        let mins = max(0, Int(secs / 60))
+        if mins >= 60 { return "\(mins / 60)h \(mins % 60)m" }
+        return "\(mins)m"
+    }
+
+    private func detectedTimeText(_ row: WorkoutRow) -> String {
+        let f = DateFormatter(); f.dateFormat = "h:mm a"
+        return f.string(from: Date(timeIntervalSince1970: TimeInterval(row.startTs)))
+    }
+
+    private func detectedStatsText(_ row: WorkoutRow) -> String? {
+        var parts: [String] = []
+        if let avg = row.avgHr, avg > 0 { parts.append("avg \(avg) bpm") }
+        if let mx = row.maxHr, mx > 0 { parts.append("peak \(mx) bpm") }
+        if let s = row.strain, s > 0 { parts.append(String(format: "strain %.1f", s)) }
+        if let kcal = row.energyKcal, kcal > 0 { parts.append("\(Int(kcal)) kcal") }
+        return parts.isEmpty ? nil : parts.joined(separator: "  \u{2022}  ")
     }
 
     // MARK: - Derived (sync, off repo.today / repo.days)
