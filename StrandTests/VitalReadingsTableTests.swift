@@ -1,4 +1,5 @@
 import XCTest
+import StrandAnalytics
 @testable import Strand
 
 /// The readings table under a series-backed vital detail (task #8) — Swift twin of Android's
@@ -6,8 +7,8 @@ import XCTest
 /// renders: rows and the "N readings" caption derive from the SAME windowed list (so their counts can't
 /// disagree), rows are NEWEST-FIRST, each raw source id resolves through the shared
 /// `TodayView.provenanceDisplayLabel` (strap → "Whoop", Health Connect → "Health Connect", Apple Health →
-/// "Apple Health", the "-noop" sibling → "On-device"), and each value reuses the model's own formatter +
-/// unit. Blood Oxygen (SpO2) is the acceptance case.
+/// "Apple Health", the "-noop" sibling → "On-device"), and each value reuses the model's unit-aware
+/// formatter. Blood Oxygen (SpO2) is the acceptance case.
 final class VitalReadingsTableTests: XCTestCase {
 
     private let strap = Repository.whoopSource                  // "my-whoop"
@@ -26,16 +27,18 @@ final class VitalReadingsTableTests: XCTestCase {
             VitalReading(day: "2026-01-03", value: 97, source: appleHealth),
         ]
     }
-    private func spo2Format(_ v: Double) -> String { String(format: "%.0f", v) }
+    private func spo2Format(_ v: Double) -> String {
+        MetricCatalog.all.first { $0.key == "spo2" }!.format(v)
+    }
 
     func testRowCountEqualsReadingsCount() {
-        let rows = vitalReadingRows(readings: spo2Readings(), unit: "%", strapDeviceId: strap,
+        let rows = vitalReadingRows(readings: spo2Readings(), strapDeviceId: strap,
                                     now: now, format: spo2Format)
         XCTAssertEqual(rows.count, spo2Readings().count)
     }
 
     func testRowsAreNewestFirst() {
-        let rows = vitalReadingRows(readings: spo2Readings(), unit: "%", strapDeviceId: strap,
+        let rows = vitalReadingRows(readings: spo2Readings(), strapDeviceId: strap,
                                     now: now, format: spo2Format)
         // Ascending input (01 → 03) must render descending (03 → 01).
         XCTAssertEqual(rows.map(\.time), ["3 Jan", "2 Jan", "1 Jan"])
@@ -43,7 +46,7 @@ final class VitalReadingsTableTests: XCTestCase {
     }
 
     func testSourceLabelsResolvePerSample() {
-        let rows = vitalReadingRows(readings: spo2Readings(), unit: "%", strapDeviceId: strap,
+        let rows = vitalReadingRows(readings: spo2Readings(), strapDeviceId: strap,
                                     now: now, format: spo2Format)
         // Newest-first, so: Apple Health (03), Health Connect (02), Whoop strap (01).
         XCTAssertEqual(rows.map(\.source), ["Apple Health", "Health Connect", "Whoop"])
@@ -52,17 +55,16 @@ final class VitalReadingsTableTests: XCTestCase {
     func testComputedStrapSiblingReadsOnDevice() {
         let rows = vitalReadingRows(
             readings: [VitalReading(day: "2026-01-04", value: 55, source: strap + "-noop")],
-            unit: "yrs", strapDeviceId: strap, now: now, format: { String(format: "%.0f", $0) }
+            strapDeviceId: strap, now: now, format: { String(format: "%.0f yrs", $0) }
         )
         XCTAssertEqual(rows.first?.source, "On-device")
     }
 
     func testValueReusesModelFormatAndUnit() {
-        // The row value is the model's own formatter applied to the reading, with the unit appended —
-        // 41.7 ms formats (%.0f) to "42 ms".
+        let metric = MetricCatalog.all.first { $0.key == "hrv" }!
         let rows = vitalReadingRows(
             readings: [VitalReading(day: "2026-01-01", value: 41.7, source: strap)],
-            unit: "ms", strapDeviceId: strap, now: now, format: { String(format: "%.0f", $0) }
+            strapDeviceId: strap, now: now, format: metric.format
         )
         XCTAssertEqual(rows.first?.value, "42 ms")
     }
@@ -71,8 +73,31 @@ final class VitalReadingsTableTests: XCTestCase {
         // Vitality has an empty unit; the value must not carry a dangling space.
         let rows = vitalReadingRows(
             readings: [VitalReading(day: "2026-01-01", value: 72, source: strap + "-noop")],
-            unit: "", strapDeviceId: strap, now: now, format: { String(format: "%.0f", $0) }
+            strapDeviceId: strap, now: now, format: { String(format: "%.0f", $0) }
         )
         XCTAssertEqual(rows.first?.value, "72")
+    }
+
+    func testAllCatalogUnitsAppearExactlyAsFormatted() {
+        for metric in MetricCatalog.all {
+            let formatted = metric.format(41.7)
+            let rows = vitalReadingRows(
+                readings: [VitalReading(day: "2026-01-01", value: 41.7, source: strap)],
+                strapDeviceId: strap, now: now, format: metric.format)
+            XCTAssertEqual(rows.first?.value, formatted, metric.key)
+        }
+    }
+
+    func testConvertedUnitsAreNotFollowedByStoredUnits() {
+        for key in ["weight", "skin_temp", "strain"] {
+            let metric = MetricCatalog.all.first { $0.key == key }!
+            let format: (Double) -> String = {
+                metric.format($0, system: .imperial, temperature: .fahrenheit)
+            }
+            let rows = vitalReadingRows(
+                readings: [VitalReading(day: "2026-01-01", value: 41.7, source: strap)],
+                strapDeviceId: strap, now: now, format: format)
+            XCTAssertEqual(rows.first?.value, format(41.7), key)
+        }
     }
 }

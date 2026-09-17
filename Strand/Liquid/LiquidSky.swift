@@ -8,6 +8,14 @@
 import SwiftUI
 import StrandDesign
 
+struct SkyHeaderStyle {
+    let hasSky: Bool
+
+    var primary: Color { hasSky ? StrandPalette.onDarkPrimary : StrandPalette.textPrimary }
+    var secondary: Color { hasSky ? StrandPalette.onDarkSecondary : StrandPalette.textSecondary }
+    var controlFill: Color { hasSky ? .white.opacity(0.16) : StrandPalette.textPrimary.opacity(0.08) }
+}
+
 struct LiquidSkyStop {
     let h: Double
     let top: Color, mid: Color, hor: Color

@@ -176,17 +176,17 @@ struct VitalReadingRow: Equatable {
 /// the "N readings" caption shows, guaranteeing the two never drift. Each row pairs the reading's DAY
 /// (these vital series carry one aggregated reading per night, so a row's "time" is its localized calendar
 /// date; the date always shows since a charted window spans 2+ days) with the model's own `format`ted
-/// value + `unit` and the source label from `TodayView.provenanceDisplayLabel` (a strap id → "Whoop", its
+/// value (including its display unit) and the source label from `TodayView.provenanceDisplayLabel` (a strap id → "Whoop", its
 /// "-noop" sibling → "On-device", "apple-health" → "Apple Health", "health-connect" → "Health Connect").
-/// `strapDeviceId` is the active strap id the resolver needs. Byte-identical projection to Android's
-/// `vitalReadingRows`.
-func vitalReadingRows(readings: [VitalReading], unit: String, strapDeviceId: String,
+/// `strapDeviceId` is the active strap id the resolver needs. Unlike Android's numeric formatter,
+/// `MetricDescriptor.format` already includes the unit and any user-selected conversion.
+func vitalReadingRows(readings: [VitalReading], strapDeviceId: String,
                       now: Date = Date(), format: (Double) -> String) -> [VitalReadingRow] {
     readings.reversed().map { reading in
         let value = format(reading.value)
         return VitalReadingRow(
             time: vitalReadingDateLabel(reading.day, now: now),
-            value: unit.isEmpty ? value : "\(value) \(unit)",
+            value: value,
             source: TodayView.provenanceDisplayLabel(rawSource: reading.source, deviceId: strapDeviceId)
         )
     }
@@ -817,7 +817,7 @@ struct MetricDetailView: View {
     /// A one-line summary of the current metric for the WHOOP-style SHARE button.
     private var shareSummary: String {
         let v = latest.map { fmt($0.value) } ?? "—"
-        return "My \(metric.title): \(v)\(metric.unit.isEmpty ? "" : " " + metric.unit) — via Ūrjas"
+        return "My \(metric.title): \(v) — via Ūrjas"
     }
 
     /// The scenic hero: the metric's current value as either the signature liquid
@@ -1150,8 +1150,7 @@ struct MetricDetailView: View {
         let readings = windowed.map {
             VitalReading(day: $0.day, value: $0.value, source: sourceByDay[$0.day] ?? metric.source)
         }
-        let rows = vitalReadingRows(readings: readings, unit: metric.unit,
-                                    strapDeviceId: repo.deviceId, format: fmt)
+        let rows = vitalReadingRows(readings: readings, strapDeviceId: repo.deviceId, format: fmt)
         if !rows.isEmpty {
             NoopCard {
                 VStack(alignment: .leading, spacing: NoopMetrics.gap) {

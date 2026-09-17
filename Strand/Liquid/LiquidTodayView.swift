@@ -59,6 +59,11 @@ struct LiquidTodayView: View {
     @State private var restTrend: [Double] = []
     @State private var calibration: CalibrationStatus.Progress?  // "day N of 14" for a new wearer (f6)
     @State private var pendingDetected: [WorkoutRow] = []        // newly auto-detected bouts to confirm
+    private struct DetectedSportSelection: Identifiable {
+        let row: WorkoutRow
+        var id: Int { row.startTs }
+    }
+    @State private var detectedSportSelection: DetectedSportSelection?
 
     // sheets / expanders
     @State private var guideSection: ScoreSection?
@@ -362,6 +367,14 @@ struct LiquidTodayView: View {
         .sheet(item: $guideSection) { section in
             NavigationStack { ScoringGuideView(initialSection: section, onClose: { guideSection = nil }) }
         }
+        .sheet(item: $detectedSportSelection) { selection in
+            StartWorkoutSheet(title: String(localized: "Change sport"),
+                              subtitle: String(localized: "Pick a sport for this detected workout."),
+                              actionVerb: String(localized: "Confirm"),
+                              suggested: [selection.row.sport]) { sport in
+                confirmDetected(selection.row, sport: sport)
+            }
+        }
         .sheet(item: $customizationDestination) { destination in
             TodayCustomizationSheet(
                 initialDestination: destination,
@@ -440,7 +453,8 @@ struct LiquidTodayView: View {
     // MARK: - Scene (sky title + controls + hero)
 
     private var scene: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let headerStyle = SkyHeaderStyle(hasSky: showDayCycleBackground)
+        return VStack(alignment: .leading, spacing: 0) {
             // WHOOP-style top bar: profile avatar (leading), a centered ‹ DAY › date stepper whose
             // arrows step days and whose label opens the calendar, and the strap battery + controls
             // (trailing).
@@ -461,7 +475,7 @@ struct LiquidTodayView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(selectedDayOffset < earliestDayOffset
-                                             ? .white.opacity(0.9) : .white.opacity(0.25))
+                                             ? headerStyle.primary : headerStyle.primary.opacity(0.25))
                             .frame(width: 28, height: 28)
                             .contentShape(Rectangle())
                     }
@@ -472,7 +486,7 @@ struct LiquidTodayView: View {
                     Button { showDayPicker = true } label: {
                         Text(dayTitle.uppercased())
                             .font(StrandFont.overline).tracking(1.8)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(headerStyle.primary)
                             .shadow(color: .black.opacity(0.4), radius: 8, y: 1)
                             .lineLimit(1)
                             .frame(minWidth: 74)
@@ -494,7 +508,7 @@ struct LiquidTodayView: View {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(selectedDayOffset > 0
-                                             ? .white.opacity(0.9) : .white.opacity(0.25))
+                                             ? headerStyle.primary : headerStyle.primary.opacity(0.25))
                             .frame(width: 28, height: 28)
                             .contentShape(Rectangle())
                     }
@@ -507,16 +521,16 @@ struct LiquidTodayView: View {
 
                 // Trailing controls: quick-add, sync, strap battery, customize.
                 HStack(spacing: 8) {
-                    LiquidAddButton()
-                    LiquidSyncChip()
+                    LiquidAddButton(style: headerStyle)
+                    LiquidSyncChip(style: headerStyle)
                     LiquidBatteryButton()
                     // One entry point for section order/visibility and both nested card editors.
                     Button { customizationDestination = .today } label: {
                         Image(systemName: "slider.horizontal.3")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(headerStyle.primary)
                             .frame(width: 34, height: 34)
-                            .background(Circle().fill(.white.opacity(0.16)))
+                            .background(Circle().fill(headerStyle.controlFill))
                     }
                     .buttonStyle(LiquidPressStyle())
                     .accessibilityLabel("Customize Today")
@@ -527,7 +541,7 @@ struct LiquidTodayView: View {
             // #today-layout: the hero + Start-session row moved OUT of the scene into the reorderable
             // section block below. The wordmark's bottom pad (10) + the section VStack's 12 spacing keeps
             // the default hero-under-wordmark gap at the original 22.
-            LiquidWordmark()
+            LiquidWordmark(ink: headerStyle.primary)
                 .padding(.top, 30)
                 .padding(.bottom, 10)
         }
@@ -1620,10 +1634,8 @@ struct LiquidTodayView: View {
                         .foregroundStyle(Color.white)
                 }
                 .buttonStyle(.plain)
-                Menu {
-                    ForEach(detectedSportChoices, id: \.self) { s in
-                        Button(s) { confirmDetected(row, sport: s) }
-                    }
+                Button {
+                    detectedSportSelection = DetectedSportSelection(row: row)
                 } label: {
                     Text("Change sport")
                         .font(StrandFont.caption.weight(.semibold))
@@ -1631,6 +1643,7 @@ struct LiquidTodayView: View {
                         .background(Capsule().strokeBorder(StrandPalette.textSecondary.opacity(0.4), lineWidth: 1))
                         .foregroundStyle(StrandPalette.textPrimary)
                 }
+                .buttonStyle(.plain)
                 Spacer(minLength: 0)
                 Button(action: { rejectDetected(row) }) {
                     Text("Not a workout")
@@ -1641,10 +1654,6 @@ struct LiquidTodayView: View {
             }
         }
         .padding(.top, 2)
-    }
-
-    private var detectedSportChoices: [String] {
-        ["Run", "Walk", "Cycling", "Strength", "HIIT", "Yoga", "Swimming", "Rowing", "Elliptical", "Other"]
     }
 
     private func detectedDurationText(_ row: WorkoutRow) -> String {
@@ -1855,6 +1864,7 @@ private struct PullOffsetKey: PreferenceKey {
 /// for a little easter egg: it plays one of several random one-shot animations — wiggle, shake, flip,
 /// spin, bounce, or a jelly squash — with a light haptic.
 private struct LiquidWordmark: View {
+    var ink: Color
     @State private var rot = 0.0      // z-rotation (wiggle / spin)
     @State private var scaleX = 1.0   // horizontal scale (jelly squash)
     @State private var scaleY = 1.0   // vertical scale (bounce / jelly)
@@ -1867,7 +1877,7 @@ private struct LiquidWordmark: View {
             ForEach(Array("Ūrjas".enumerated()), id: \.offset) { _, ch in
                 Text(String(ch))
                     .font(StrandFont.rounded(16, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(ink)
             }
         }
         .shadow(color: .black.opacity(0.25), radius: 6, y: 1)
@@ -2057,14 +2067,15 @@ private struct LiquidRefreshIndicator: View {
 }
 
 private struct LiquidAddButton: View {
+    var style: SkyHeaderStyle
     @EnvironmentObject var router: NavRouter
     var body: some View {
         Button { router.requestQuickActions() } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(style.primary)
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(.white.opacity(0.16)))
+                .background(Circle().fill(style.controlFill))
         }
         .buttonStyle(LiquidPressStyle())
         .accessibilityLabel("Quick actions")
@@ -2353,9 +2364,9 @@ private struct LiquidBatteryButton: View {
 /// (buried in the collapsible Data Sources card) said anything, and only once expanded. This closes that
 /// gap using the SAME state (`SyncChipState`, shared with the classic Today's `SyncStatusChip`) so the two
 /// headers can't disagree on when syncing is happening — restyled to this header's own dark-hero icon
-/// idiom (`.white.opacity(0.16)` fill, white content, matching `LiquidAddButton`) rather than reusing
-/// `SyncStatusChip`'s light-surface chrome, which would read poorly over the photo/gradient hero.
+/// styling shared with `LiquidAddButton`, adapting to the canvas when the sky is disabled.
 private struct LiquidSyncChip: View {
+    var style: SkyHeaderStyle
     @EnvironmentObject var live: LiveState
 
     var body: some View {
@@ -2379,10 +2390,10 @@ private struct LiquidSyncChip: View {
             Image(systemName: system).font(.system(size: 11, weight: .bold))
             Text(text).font(.system(size: 12, weight: .bold))
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(style.primary)
         .padding(.horizontal, 10)
         .frame(height: 34)
-        .background(Capsule().fill(.white.opacity(0.16)))
+        .background(Capsule().fill(style.controlFill))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(a11y))
     }
