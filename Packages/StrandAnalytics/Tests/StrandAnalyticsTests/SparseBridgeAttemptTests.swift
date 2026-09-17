@@ -68,15 +68,14 @@ final class SparseBridgeAttemptTests: XCTestCase {
         assertAgreesWithBridge(periods, hr: hr, baseline: 60)
     }
 
-    /// The reporter's shape (#737): fragments separated by ACTIVE runs are never adjacent sleep pairs, so
-    /// the bridge considers nothing — which is exactly why their log showed runsBefore == runsAfter with
-    /// no explanation. An EMPTY attempt list is the diagnosis, and the emitter says so in words.
-    func testFragmentsSeparatedByActiveRunsProduceNoAttempts() {
+    /// The newer bridge considers a brief motion-labelled interruption when HR corroborates sleep.
+    func testFragmentsSeparatedByShortActiveRunAreConsidered() {
         let periods = [sleep(0, 3_000), active(3_000, 3_300), sleep(3_300, 6_000)]
         let hr = sleepHR(from: 0, to: 6_000)
         let a = SleepStager.sparseBridgeAttempts(periods, sparse: true, hr: hr, baseline: 70)
-        XCTAssertTrue(a.isEmpty, "an intervening active run is never a considered pair")
-        assertAgreesWithBridge(periods, hr: hr, baseline: 70)   // and the real bridge merges nothing
+        XCTAssertEqual(a.count, 1)
+        XCTAssertTrue(a[0].bridged)
+        assertAgreesWithBridge(periods, hr: hr, baseline: 70)
     }
 
     func testNoOpWhenNotSparse() {

@@ -80,6 +80,31 @@ extension WhoopStore {
         }
     }
 
+    /// Adapted from upstream's multi-stream gate. Counts also witness deleted interior rows;
+    /// the custom IMU stream remains an input to sport refinement. No sensor rows are materialized.
+    public func analysisFingerprint() async throws -> String {
+        try syncRead { db in
+            let tables = ["hrSample", "ppgHrSample", "rrInterval", "respSample", "gravitySample",
+                          "sleepStateSample", "event", "spo2Sample", "skinTempSample", "stepSample",
+                          "rawImuSample"]
+            var parts = ["urjas-v1"]
+            for table in tables {
+                let row = try Row.fetchOne(db, sql: """
+                    SELECT COUNT(*) AS c, COALESCE(MAX(rowid), 0) AS r,
+                           COALESCE(MAX(ts), 0) AS t FROM \(table)
+                    """)!
+                parts.append("\(table):\(row["c"] as Int):\(row["r"] as Int):\(row["t"] as Int)")
+            }
+            let registry = try String.fetchOne(db, sql: """
+                SELECT COALESCE(GROUP_CONCAT(identity, ';'), '') FROM
+                  (SELECT QUOTE(id) || ':' || QUOTE(brand) || ':' || QUOTE(model) || ':' || QUOTE(status) AS identity
+                   FROM pairedDevice ORDER BY id)
+                """) ?? ""
+            parts.append(registry)
+            return parts.joined(separator: "|")
+        }
+    }
+
     /// Aggregate HR over a window: `(n, avg, max)` computed in SQLite over the same measured-∪-PPG rows
     /// [hrSamples] returns, WITHOUT materialising them and WITHOUT a row limit.
     ///

@@ -136,7 +136,8 @@ public enum WakeMotionRefinement {
         guard newStages != session.stages else { return session }
         let newEfficiency = SleepStager.efficiency(start: session.start, end: session.end, stages: newStages)
         return SleepSession(start: session.start, end: session.end, efficiency: newEfficiency,
-                            stages: newStages, restingHR: session.restingHR, avgHRV: session.avgHRV)
+                            stages: newStages, restingHR: session.restingHR, avgHRV: session.avgHRV,
+                            hrOnly: session.hrOnly)
     }
 
     /// Toggle-shaped convenience for the session-level overload (see `apply(_:grav:steps:enabled:)`).

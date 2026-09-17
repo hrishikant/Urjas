@@ -113,6 +113,7 @@ final class IntelligenceEngine: ObservableObject {
         /// provenance sets, which are resolved on the main actor).
         let readOwner: String
         let hrRows: Int
+        let hasSleepRR: Bool
         /// Sleep & Rest test-mode gate-trace + Rest sub-score lines for this day, collected off the main
         /// actor and replayed through `diagnosticSink` tagged `.sleep` in per-day order. Empty unless the
         /// Sleep mode is active (the gate is read once before the loop), so the default path is unchanged.
@@ -350,50 +351,46 @@ final class IntelligenceEngine: ObservableObject {
     /// Compute on-device scores for each of the last `maxDays` that actually has raw HR data.
     /// Personal baselines (HRV / resting HR) are folded from the imported history, so even the first
     /// live night can be scored against your norm.
-    func analyzeRecent(maxDays: Int = 21, force: Bool = true) async {
+    func analyzeRecent(maxDays: Int = 21, force: Bool = true, skipIfUnchanged: Bool = false) async {
         // #899-A: a concurrent pass already holds the lock. A NON-forced idle tick is safe to drop (the
         // in-flight pass already covers the same window). But a FORCED call is a real update path (a
         // post-backfill rescore after a sync) , dropping it would leave a freshly-synced night unscored
         // until the next cycle. Re-arm instead: flag it so the running pass's `defer` re-invokes once.
         guard !computing else { if force { pendingForcedRescore = true }; return }
+        // Take the lock before the first store await; actor reentrancy otherwise admits two passes.
+        computing = true
+        defer {
+            computing = false
+            if pendingForcedRescore {
+                pendingForcedRescore = false
+                Task { await self.analyzeRecent(maxDays: maxDays, force: true) }
+            }
+        }
         guard let store = await repo.storeHandle() else { note = String(localized: "No on-device store yet."); return }
         guard let hrvCfg = Baselines.metricCfg["hrv"],
               let rhrCfg = Baselines.metricCfg["resting_hr"],
               let respCfg = Baselines.metricCfg["resp"],
               let skinCfg = Baselines.metricCfg["skin_temp"] else { return }
 
-        // #836 (idle-tick gate): re-scoring a 21-day window re-reads ~21×54 h of raw HR and re-runs
-        // analyzeDay over it. After a big Apple Health import (a reporter's: 2.1 M rows, ~190 k HR/day) that
-        // is multi-second, memory-heavy work, and the 15-minute steady-state tick (AppModel) repeats it
-        // every tick even when NOTHING new landed — the ongoing lag/crash in #836. A cheap whole-history HR
-        // fingerprint (count+maxTs, indexed, no rows materialized) lets a NON-forced caller short-circuit
-        // when the raw stream is byte-for-byte unchanged since the last successful run. All-or-nothing: it
-        // never produces a PARTIAL pass, so the window-wide reconciliation (stale-day eviction, detected-
-        // workout delete) is untouched and no computed history is dropped. Every real update path (sync
-        // backfill, import, sleep/workout edit, baseline recalibrate, timestamp heal) calls with the default
-        // `force: true` and always rescores, so a skipped tick can never hide new data.
-        let wmKey: String = (try? await store.hrFingerprint(deviceId: deviceId, from: 0, to: 9_999_999_999))
-            .map { "\($0.count):\($0.maxTs)" } ?? ""
-        if !force, !wmKey.isEmpty,
-           UserDefaults.standard.string(forKey: Self.analyzeWatermarkKey) == wmKey {
+        // Cross-device, multi-stream fingerprint: duplicate offloads and idle ticks can skip a full
+        // scan, but edits/recalibration still force it. Include the calendar day and window so midnight
+        // or a wider requested backfill cannot reuse yesterday's narrower result.
+        let wmKey: String
+        do {
+            let inputs = try await store.analysisFingerprint()
+            let day = AnalyticsEngine.dayString(Int(Date().timeIntervalSince1970),
+                                               offsetSec: TimeZone.current.secondsFromGMT())
+            wmKey = "urjas-inputs-v1:\(day):\(maxDays):\(inputs)"
+        } catch {
+            note = "Could not read analysis inputs. Your existing scores have been kept."
+            diagnosticSink?("re-score: input fingerprint failed: \(error)", nil)
             return
         }
-
-        computing = true
-        // #899-A re-arm: clear the lock, then if a forced rescore was dropped while this pass held it,
-        // run it ONCE. The flag is cleared BEFORE the re-invoke (a single re-arm), so a forced call landing
-        // DURING the re-invoke re-arms it again but a quiet one does not , this can never recurse unbounded.
-        // The re-invoke is launched on a fresh `Task` because `defer` is synchronous; by the time it runs
-        // `computing` is already false, so its own `guard !computing` passes and it rescores the new data.
-        defer {
-            computing = false
-            if pendingForcedRescore {
-                pendingForcedRescore = false
-                // Carry THIS pass's window into the re-pass: a heal firing during a wide one-shot pass
-                // must re-score the same width, not the default 21 days (Kotlin re-passes with the same
-                // maxDays; keep the platforms in lockstep).
-                Task { await self.analyzeRecent(maxDays: maxDays, force: true) }
-            }
+        if Self.shouldSkipRescore(force: force, skipIfUnchanged: skipIfUnchanged,
+                                  fingerprint: wmKey,
+                                  previous: UserDefaults.standard.string(forKey: Self.analyzeWatermarkKey)) {
+            diagnosticSink?("re-score: unchanged inputs, skipped", nil)
+            return
         }
 
         let up = UserProfile(weightKg: profile.weightKg, heightCm: profile.heightCm,
@@ -509,7 +506,7 @@ final class IntelligenceEngine: ObservableObject {
         // the 5/MG cumulative @57 series + wrap-aware deltas + dropped deltas, replayed below tagged `.steps`.
         // The trace recomputes the SAME wrap-aware sum analyzeDay already did, so the steps total is unchanged.
         let stepsTraceActive = TestCentre.active(.steps)
-        let (scanned, skippedDayLines): ([DayScan], [String]) = await Task.detached(priority: .utility) {
+        let scanTask = Task.detached(priority: .utility) {
             var out: [DayScan] = []
             // Days skipped below (too few HR samples) never get a DayScan, so this diagnostic can't ride
             // along on one; carried out alongside `out` and replayed through `diagnosticSink` on the main
@@ -543,19 +540,19 @@ final class IntelligenceEngine: ObservableObject {
                                                        devices: regDevices, activeId: regActiveId,
                                                        registry: registry, fallbackDeviceId: ownerFallbackId)
 
-                let hr = (try? await store.hrSamples(deviceId: owner, from: from, to: to, limit: 200_000)) ?? []
+                let hr = try await store.hrSamples(deviceId: owner, from: from, to: to, limit: 200_000)
                 guard hr.count >= 200 else {
                     skippedDayLines.append("sleep day=\(day) SKIPPED hrSamples=\(hr.count) (need ≥200)")
                     continue
                 }
-                let rr = (try? await store.rrIntervals(deviceId: owner, from: from, to: to, limit: 200_000)) ?? []
-                let resp = (try? await store.respSamples(deviceId: owner, from: from, to: to, limit: 200_000)) ?? []
-                let grav = (try? await store.gravitySamples(deviceId: owner, from: from, to: to, limit: 200_000)) ?? []
-                let steps = (try? await store.stepSamples(deviceId: owner, from: from, to: to, limit: 200_000)) ?? []
-                let skin = (try? await store.skinTempSamples(deviceId: owner, from: from, to: to, limit: 200_000)) ?? []
+                let rr = try await store.rrIntervals(deviceId: owner, from: from, to: to, limit: 200_000)
+                let resp = try await store.respSamples(deviceId: owner, from: from, to: to, limit: 200_000)
+                let grav = try await store.gravitySamples(deviceId: owner, from: from, to: to, limit: 200_000)
+                let steps = try await store.stepSamples(deviceId: owner, from: from, to: to, limit: 200_000)
+                let skin = try await store.skinTempSamples(deviceId: owner, from: from, to: to, limit: 200_000)
                 // #93: WHOOP 4.0 raw SpO2 PPG samples for the night; analyzeDay banks the nightly red/IR ADC
                 // means on the DailyMetric. Empty on a 5/MG (no v24 spo2 channels) → the raw means stay nil.
-                let spo2 = (try? await store.spo2Samples(deviceId: owner, from: from, to: to, limit: 200_000)) ?? []
+                let spo2 = try await store.spo2Samples(deviceId: owner, from: from, to: to, limit: 200_000)
                 // #938: the strap family that WROTE this owner's skin-temp rows, so analyzeDay converts the raw
                 // register on the right scale (5/MG banks centidegrees, a WHOOP 4.0 v24 banks a raw ADC). The
                 // registry knows each device's model; unknown/non-WHOOP owners fall back to `.whoop5` (the prior
@@ -575,10 +572,10 @@ final class IntelligenceEngine: ObservableObject {
                 let skinAnchorRaw: Double?
                 if skinFamily == .whoop4 {
                     if !skinAnchorResolvedOwners.contains(owner) {
-                        let windowSkin = (try? await store.skinTempSamples(deviceId: owner,
+                        let windowSkin = try await store.skinTempSamples(deviceId: owner,
                                                                            from: skinAnchorScanFrom,
                                                                            to: skinAnchorScanTo,
-                                                                           limit: 200_000)) ?? []
+                                                                           limit: 200_000)
                         if let anchor = Whoop4SkinTemp.deviceAnchorRaw(windowSkin.map { $0.raw }) {
                             skinAnchorByOwner[owner] = anchor
                         }
@@ -594,7 +591,7 @@ final class IntelligenceEngine: ObservableObject {
                 // only when its off-wrist coverage reaches maxOffWristSleepFraction, so a real night with a
                 // short off-wrist tail survives. Pairing needs WRIST_ON too (to bound each interval); a span
                 // still open at the window end closes at `to`. Empty when the strap emitted no wrist events.
-                let wristEvents = (try? await store.events(deviceId: owner, from: from, to: to, limit: 50_000)) ?? []
+                let wristEvents = try await store.events(deviceId: owner, from: from, to: to, limit: 50_000)
                 let wristOff = AnalyticsEngine.offWristIntervals(events: wristEvents, windowEnd: to)
 
                 // Calendar-day window for the ADDITIVE daily totals (steps + calories). The night window
@@ -622,14 +619,14 @@ final class IntelligenceEngine: ObservableObject {
                                                                  dayLo: dayMid, dayHi: dayEnd, ts: { $0.ts }) {
                     dayHr = slice
                 } else {
-                    dayHr = (try? await store.hrSamples(deviceId: owner, from: dayMid, to: dayEnd, limit: 200_000)) ?? []
+                    dayHr = try await store.hrSamples(deviceId: owner, from: dayMid, to: dayEnd, limit: 200_000)
                 }
                 let daySteps: [StepSample]
                 if let slice = AnalyticsEngine.daySliceFromNight(steps, nightLo: from, nightHi: to,
                                                                  dayLo: dayMid, dayHi: dayEnd, ts: { $0.ts }) {
                     daySteps = slice
                 } else {
-                    daySteps = (try? await store.stepSamples(deviceId: owner, from: dayMid, to: dayEnd, limit: 200_000)) ?? []
+                    daySteps = try await store.stepSamples(deviceId: owner, from: dayMid, to: dayEnd, limit: 200_000)
                 }
                 // Full calendar-day gravity for WORKOUT detection. The night window above ends at
                 // dayStart+12h (≈ noon), so an afternoon/evening workout sits outside it and was only
@@ -641,7 +638,7 @@ final class IntelligenceEngine: ObservableObject {
                                                                  dayLo: dayMid, dayHi: dayEnd, ts: { $0.ts }) {
                     dayGrav = slice
                 } else {
-                    dayGrav = (try? await store.gravitySamples(deviceId: owner, from: dayMid, to: dayEnd, limit: 200_000)) ?? []
+                    dayGrav = try await store.gravitySamples(deviceId: owner, from: dayMid, to: dayEnd, limit: 200_000)
                 }
 
                 // CONSUME (#531 / #175): the strap's OWN band sleep_state for the night window as timestamped
@@ -686,6 +683,13 @@ final class IntelligenceEngine: ObservableObject {
                 // HRV mode (#141): a per-day collector for the nightly per-window RMSSD + summary; nil = default.
                 var hrvTrace: [String] = []
                 let hrvTraceSink: ((String) -> Void)? = hrvTraceActive ? { hrvTrace.append($0) } : nil
+                let useHROnlySleep: Bool
+                if grav.count < 2 {
+                    let stored = try await store.sleepSessions(deviceId: owner, from: from, to: to, limit: 4000)
+                    useHROnlySleep = stored.isEmpty
+                } else {
+                    useHROnlySleep = false
+                }
                 let res = AnalyticsEngine.analyzeDay(day: day, hr: hr, rr: rr, resp: resp, gravity: grav,
                                                      steps: steps, dayHr: dayHr, daySteps: daySteps,
                                                      dayGravity: dayGrav,
@@ -709,7 +713,8 @@ final class IntelligenceEngine: ObservableObject {
                                                      // (dayStart == today's local midnight), so the 5000-line
                                                      // ring buffer isn't flooded; every night keeps the summary.
                                                      hrvWindowDetail: dayStart == nowLocalMidnight,
-                                                     deepHrvWindow: deepHrvWindow)
+                                                     deepHrvWindow: deepHrvWindow,
+                                                     useHROnlySleep: useHROnlySleep)
                 // #195: whole-night HRV cleaning-pipeline summary for the always-on strap log, so a "reads ~2x
                 // too high" report is triageable without the HRV test mode: RMSSD vs SDNN (rmssd >> sdnn =
                 // beat-to-beat jitter surviving the ectopic filter, not real HRV), meanNN as an HR sanity-check,
@@ -788,11 +793,21 @@ final class IntelligenceEngine: ObservableObject {
                 }
                 out.append(DayScan(result: res, rhrLine: rhrLine,
                                    readOwner: owner, hrRows: hr.count,
+                                   hasSleepRR: !sleepRrRows.isEmpty,
                                    sleepTrace: sleepTrace, stepsTrace: stepsTrace, hrvTrace: hrvTrace,
                                    hrvDiag: hrvDiag))
             }
             return (out, skippedDayLines)
-        }.value
+        }
+        let scanned: [DayScan]
+        let skippedDayLines: [String]
+        do {
+            (scanned, skippedDayLines) = try await scanTask.value
+        } catch {
+            note = "Could not read the synced history. Your existing scores have been kept."
+            diagnosticSink?("re-score: history read failed: \(error)", nil)
+            return
+        }
 
         // #714: replay each skipped day's diagnostic now that we're back on the main actor (diagnosticSink
         // is MainActor-bound). Always-on , not gated behind a test mode, mirroring the Kotlin `diag` sink.
@@ -965,16 +980,18 @@ final class IntelligenceEngine: ObservableObject {
             // every night. `effectiveStartTs` (the #318 user-corrected onset) is preserved on the row.
             let dayEditedRows = Self.editedRowsForDay(editedRows, day: night.daily.day, tzOffsetSeconds: tzOffset)
             let editsByStart = Dictionary(dayEditedRows.map { ($0.startTs, $0) }, uniquingKeysWith: { a, _ in a })
-            let daily = sleepEditedDaily(night.daily, detected: night.cachedSleep, editsByStart: editsByStart,
-                                         habitualMidsleepSec: habitualMidsleepSec)
-            let recovery = recomputeRecovery(daily, baselines2)
+            let editedDaily = sleepEditedDaily(night.daily, detected: night.cachedSleep, editsByStart: editsByStart,
+                                               habitualMidsleepSec: habitualMidsleepSec)
+            let daily = Self.recomputeRecoveryDaily(editedDaily, nightlySkinTempC: night.nightlySkin,
+                                                     baselines: baselines2)
+            let recovery = daily.recovery
             // Charge term-breakdown trace (Group G): only when the Recovery test mode is on. Emits which
             // term moved Charge and which was nil and forced the renorm, tagged `.recovery`. The trace's
             // score is RecoveryScorer.recovery verbatim, so the `recovery` written above is unchanged.
             if recoveryTraceActive {
                 for line in recoveryTraceLines(daily, baselines2) { diagnosticSink?(line, .recovery) }
             }
-            let skinDev = recomputeSkinTempDev(night.nightlySkin, baselines2.skinTemp)
+            let skinDev = daily.skinTempDevC
             let source = DaySource.classify(day: daily.day, importedWhoopDays: importedWhoopDays,
                                             appleHealthDays: appleHealthDays)
             // SHARED CONTRACT enrichment: the ordered Charge driver list + the relative skin-temp marker,
@@ -1212,8 +1229,44 @@ final class IntelligenceEngine: ObservableObject {
         // Score provenance is metric-specific and lives outside dayOwnership (which remains solely a
         // resolver override). Persist scores + provenance atomically so a failed write can never label an
         // older score with a newer provider. The last row for a duplicate day wins, matching the upsert.
+        // Apply preserved snapshots AFTER current-input traces and baseline folds, never as fresh inputs.
+        var persistedDailies = dailies
+        let scansByDay = Dictionary(scanned.map { ($0.result.daily.day, $0) },
+                                   uniquingKeysWith: { first, _ in first })
+        do {
+            let previous = try await store.dailyMetrics(deviceId: computedId, from: oldestDay, to: newestDay)
+            let previousByDay = Dictionary(previous.map { ($0.day, $0) },
+                                           uniquingKeysWith: { first, _ in first })
+            for index in persistedDailies.indices {
+                let fresh = persistedDailies[index]
+                guard fresh.avgHrv == nil, let scan = scansByDay[fresh.day], !scan.hasSleepRR,
+                      previousByDay[fresh.day]?.avgHrv != nil else { continue }
+                let oldOwner = try await store.scoreInputSource(deviceId: computedId,
+                                                                day: fresh.day, key: "recovery")
+                let preserved = RescorePreservation.retainingMissingRR(
+                    fresh, previous: previousByDay[fresh.day],
+                    sameOwner: oldOwner == scan.readOwner, hasSleepRR: scan.hasSleepRR,
+                    hasSleepEdits: !Self.editedRowsForDay(editedRows, day: fresh.day,
+                                                         tzOffsetSeconds: tzOffset).isEmpty)
+                guard preserved != fresh else { continue }
+                persistedDailies[index] = preserved
+                if let outIndex = out.firstIndex(where: { $0.day == fresh.day }) {
+                    let current = out[outIndex]
+                    out[outIndex] = Computed(
+                        day: current.day, recovery: preserved.recovery, strain: current.strain,
+                        sleepMin: current.sleepMin, hrv: preserved.avgHrv, rhr: current.rhr,
+                        source: current.source, confidence: .building, drivers: [],
+                        skinTempRel: current.skinTempRel)
+                }
+                diagnosticSink?("re-score: day=\(fresh.day) retained prior R-R score, no current sleep R-R", nil)
+            }
+        } catch {
+            note = "Could not read the previous scores. They have been kept unchanged."
+            diagnosticSink?("re-score: snapshot read failed: \(error)", nil)
+            return
+        }
         var provenanceByCell: [String: ScoreInputProvenanceRow] = [:]
-        for daily in dailies {
+        for daily in persistedDailies {
             guard let source = resolvedScoreOwnerByDay[daily.day] else { continue }
             if daily.recovery != nil {
                 provenanceByCell["\(daily.day)\u{1F}recovery"] =
@@ -1229,14 +1282,20 @@ final class IntelligenceEngine: ObservableObject {
             provenanceByCell["\(point.day)\u{1F}\(point.key)"] =
                 ScoreInputProvenanceRow(day: point.day, key: point.key, sourceId: source)
         }
-        try? await store.persistComputedScores(
-            dailyMetrics: dailies,
-            metricPoints: restPoints,
-            provenance: Array(provenanceByCell.values),
-            deviceId: computedId,
-            from: oldestDay,
-            to: newestDay
-        )
+        do {
+            try await store.persistComputedScores(
+                dailyMetrics: persistedDailies,
+                metricPoints: restPoints,
+                provenance: Array(provenanceByCell.values),
+                deviceId: computedId,
+                from: oldestDay,
+                to: newestDay
+            )
+        } catch {
+            note = "Could not save the new scores. Please sync again."
+            diagnosticSink?("re-score: score transaction failed: \(error)", nil)
+            return
+        }
 
         // Now evict only the STALE computed rows in the window , those a prior (e.g. UTC-keyed) run left
         // behind that the current local-keyed run no longer produces. Read the window, diff against the
@@ -1433,82 +1492,92 @@ final class IntelligenceEngine: ObservableObject {
         let cachedSleepKept = cachedSleep.filter { s in
             !skipWindows.contains { s.startTs < $0.end && $0.start < s.endTs }   // time-overlap test
         }
-        if !cachedSleepKept.isEmpty { _ = try? await store.upsertSleepSessions(cachedSleepKept, deviceId: computedId) }
-        // ── Persist per-epoch motion (H8) beside each kept session's stagesJSON ──────────────────────────
-        // The sleepSession rows exist now (just upserted), so the targeted motion UPDATE lands. Persist ONLY
-        // for the sessions actually kept (not edited/dismissed), keyed by the detected start `analyzeDay`
-        // returned. A session whose gravity wouldn't grid was omitted from the map and is left as NULL , an
-        // absent motion series stays absent, never a fabricated zero array.
-        let keptStarts = Set(cachedSleepKept.map { $0.startTs })
-        var motionByStart: [Int: [Double]] = [:]
-        for night in scoredNights {
-            for (start, motion) in night.sessionMotion where keptStarts.contains(start) {
-                motionByStart[start] = motion
+        let healDropped: [CachedSleepSession]
+        do {
+            if !cachedSleepKept.isEmpty {
+                _ = try await store.upsertSleepSessions(cachedSleepKept, deviceId: computedId)
             }
-        }
-        for (start, motion) in motionByStart {
-            _ = try? await store.persistSessionMotion(deviceId: computedId, sessionStart: start, motionEpochs: motion)
-        }
-        // ── Persist per-epoch BAND sleep_state (#175) beside each kept session's stagesJSON ──────────────
-        // This is the source `sessionSleepStateJSON` lacked (v7.7.0 finding: the write path had no producer
-        // because the raw stream was dropped at extraction). Now analyzeDay grids the RAW `sleepStateSample`
-        // stream per session; persist it here so the NEXT pass's `bandSleepStateSamples` read (the H7 confirm)
-        // and the display can see the strap's OWN scored band. ONLY for kept (not edited/dismissed) sessions;
-        // a session with no band samples was omitted (no key) and stays NULL — an absent signal stays absent.
-        var sleepStateByStart: [Int: [Int]] = [:]
-        for night in scoredNights {
-            for (start, states) in night.sessionSleepState where keptStarts.contains(start) {
-                sleepStateByStart[start] = states
+            // ── Persist per-epoch motion (H8) beside each kept session's stagesJSON ──────────────────────────
+            // The sleepSession rows exist now (just upserted), so the targeted motion UPDATE lands. Persist ONLY
+            // for the sessions actually kept (not edited/dismissed), keyed by the detected start `analyzeDay`
+            // returned. A session whose gravity wouldn't grid was omitted from the map and is left as NULL , an
+            // absent motion series stays absent, never a fabricated zero array.
+            let keptStarts = Set(cachedSleepKept.map { $0.startTs })
+            var motionByStart: [Int: [Double]] = [:]
+            for night in scoredNights {
+                for (start, motion) in night.sessionMotion where keptStarts.contains(start) {
+                    motionByStart[start] = motion
+                }
             }
-        }
-        for (start, states) in sleepStateByStart {
-            _ = try? await store.persistSessionSleepState(deviceId: computedId, sessionStart: start, states: states)
-        }
-        // ── Overlap-aware banked-sleep heal (#899) ────────────────────────────────────────────────────
-        // An unstable strap clock re-banks the SAME night under a shifted timebase, so successive passes
-        // detect it at shifted bounds and the upsert above lands a SECOND row beside the stale one (the
-        // (deviceId, startTs) key differs, and sleep has no delete-reinsert reconcile like dailyMetric /
-        // workout). Collapse the window's stored sessions with the overlap rule, treating the rows THIS
-        // pass just banked as the bank-recency witness (the strap's current timebase), and delete the
-        // stale copies. Scoped to sessions whose wake day lies inside the [oldestDay, newestDay] daily
-        // reconcile window: exactly the days this pass re-scored/evicted, so a session row is never
-        // deleted out from under a daily row the pass did not refresh. Edited rows are never dropped.
-        let storedSessions = (try? await store.sleepSessions(deviceId: computedId, from: windowStart,
-                                                             to: now, limit: 4000)) ?? []
-        let healable = storedSessions.filter {
-            (oldestDay...newestDay).contains(AnalyticsEngine.dayString($0.endTs, offsetSec: tzOffset))
-        }
-        let healDropped = SleepSessionDedup.dedupe(healable, freshStarts: keptStarts).dropped
-        for stale in healDropped {
-            _ = try? await store.deleteSleepSession(deviceId: computedId, startTs: stale.startTs)
-        }
-        if !healDropped.isEmpty {
-            diagnosticSink?("Dedup(#899): removed \(healDropped.count) overlapping duplicate sleep "
-                + "session(s) re-banked under a shifted strap timebase; re-scoring the affected days.", nil)
-            // Re-score against the cleaned store via the existing #899-A re-arm: the days scored THIS
-            // pass consumed the read-side deduped view, but that view had no bank-recency witness (the
-            // fresh detections weren't banked yet), so its survivor can differ from the heal's. One
-            // forced re-pass reconciles them. HARD-BOUNDED: if the re-pass's own heal drops rows
-            // again (detection oscillating under its own feedback), it does NOT re-arm a second time,
-            // matching the Android one-re-pass bound; the budget restores once a pass heals nothing.
-            if !healRearmedThisCycle {
-                healRearmedThisCycle = true
-                pendingForcedRescore = true
+            for (start, motion) in motionByStart {
+                _ = try await store.persistSessionMotion(
+                    deviceId: computedId, sessionStart: start, motionEpochs: motion)
             }
-        } else {
-            healRearmedThisCycle = false
-        }
-        // Make re-detection idempotent across runs: clear the prior computed detected workouts in the
-        // scored window (a bout's startTs can drift as more HR arrives, which would otherwise orphan
-        // stale rows under the (deviceId,startTs,sport) key), then re-insert.
-        _ = try? await store.deleteWorkouts(deviceId: computedId, source: computedId,
-                                            from: windowStart, to: now)
-        if !workoutRows.isEmpty { _ = try? await store.upsertWorkouts(workoutRows, deviceId: computedId) }
-        // #510: write back any real (manual/imported) rows a dropped detected bout backfilled, one
-        // upsert per owning deviceId (see the collision branch above for why these can't share the
-        // `computedId` batch above).
-        for (devId, rows) in backfilledByDevice {
-            _ = try? await store.upsertWorkouts(rows, deviceId: devId)
+            // ── Persist per-epoch BAND sleep_state (#175) beside each kept session's stagesJSON ──────────────
+            // This is the source `sessionSleepStateJSON` lacked (v7.7.0 finding: the write path had no producer
+            // because the raw stream was dropped at extraction). Now analyzeDay grids the RAW `sleepStateSample`
+            // stream per session; persist it here so the NEXT pass's `bandSleepStateSamples` read (the H7 confirm)
+            // and the display can see the strap's OWN scored band. ONLY for kept (not edited/dismissed) sessions;
+            // a session with no band samples was omitted (no key) and stays NULL — an absent signal stays absent.
+            var sleepStateByStart: [Int: [Int]] = [:]
+            for night in scoredNights {
+                for (start, states) in night.sessionSleepState where keptStarts.contains(start) {
+                    sleepStateByStart[start] = states
+                }
+            }
+            for (start, states) in sleepStateByStart {
+                _ = try await store.persistSessionSleepState(deviceId: computedId, sessionStart: start, states: states)
+            }
+            // ── Overlap-aware banked-sleep heal (#899) ────────────────────────────────────────────────────
+            // An unstable strap clock re-banks the SAME night under a shifted timebase, so successive passes
+            // detect it at shifted bounds and the upsert above lands a SECOND row beside the stale one (the
+            // (deviceId, startTs) key differs, and sleep has no delete-reinsert reconcile like dailyMetric /
+            // workout). Collapse the window's stored sessions with the overlap rule, treating the rows THIS
+            // pass just banked as the bank-recency witness (the strap's current timebase), and delete the
+            // stale copies. Scoped to sessions whose wake day lies inside the [oldestDay, newestDay] daily
+            // reconcile window: exactly the days this pass re-scored/evicted, so a session row is never
+            // deleted out from under a daily row the pass did not refresh. Edited rows are never dropped.
+            let storedSessions = try await store.sleepSessions(
+                deviceId: computedId, from: windowStart,
+                to: now, limit: 4000)
+            let healable = storedSessions.filter {
+                (oldestDay...newestDay).contains(AnalyticsEngine.dayString($0.endTs, offsetSec: tzOffset))
+            }
+            healDropped = SleepSessionDedup.dedupe(healable, freshStarts: keptStarts).dropped
+            for stale in healDropped {
+                _ = try await store.deleteSleepSession(deviceId: computedId, startTs: stale.startTs)
+            }
+            if !healDropped.isEmpty {
+                diagnosticSink?(
+                    "Dedup(#899): removed \(healDropped.count) overlapping duplicate sleep "
+                        + "session(s) re-banked under a shifted strap timebase; re-scoring the affected days.", nil)
+                // Re-score against the cleaned store via the existing #899-A re-arm: the days scored THIS
+                // pass consumed the read-side deduped view, but that view had no bank-recency witness (the
+                // fresh detections weren't banked yet), so its survivor can differ from the heal's. One
+                // forced re-pass reconciles them. HARD-BOUNDED: if the re-pass's own heal drops rows
+                // again (detection oscillating under its own feedback), it does NOT re-arm a second time,
+                // matching the Android one-re-pass bound; the budget restores once a pass heals nothing.
+                if !healRearmedThisCycle {
+                    healRearmedThisCycle = true
+                    pendingForcedRescore = true
+                }
+            } else {
+                healRearmedThisCycle = false
+            }
+            // Make re-detection idempotent across runs: clear the prior computed detected workouts in the
+            // scored window (a bout's startTs can drift as more HR arrives, which would otherwise orphan
+            // stale rows under the (deviceId,startTs,sport) key), then re-insert.
+            try await store.replaceDetectedWorkouts(workoutRows, deviceId: computedId, from: windowStart, to: now)
+            // #510: write back any real (manual/imported) rows a dropped detected bout backfilled, one
+            // upsert per owning deviceId (see the collision branch above for why these can't share the
+            // `computedId` batch above).
+            for (devId, rows) in backfilledByDevice {
+                _ = try await store.upsertWorkouts(rows, deviceId: devId)
+            }
+        } catch {
+            note = "Could not finish saving synced activities. Please sync again."
+            diagnosticSink?("re-score: activity persistence failed: \(error)", nil)
+            return
         }
 
         // #137: a manually-started workout is scored from sparse live HR at save time , near-zero
@@ -1535,16 +1604,19 @@ final class IntelligenceEngine: ObservableObject {
         // Sleep tab stops showing the removed duplicates right away.
         if !dailies.isEmpty || !healDropped.isEmpty { await repo.refresh() }
 
-        // #836: record the raw-HR fingerprint this run scored against, so a later NON-forced tick can
+        // Record the input fingerprint this run scored against, so a later automatic trigger can
         // short-circuit while it's unchanged. Written ONLY here at the end of a completed run (never on an
         // early guard-return), so an interrupted/failed run can't advance the watermark past unscored data.
         if !wmKey.isEmpty { UserDefaults.standard.set(wmKey, forKey: Self.analyzeWatermarkKey) }
     }
 
-    /// UserDefaults key for the #836 idle-tick gate: the `(count:maxTs)` HR fingerprint the last completed
-    /// `analyzeRecent` scored against. A non-forced tick whose current fingerprint equals this skips the
-    /// 21-day rescore; cleared implicitly by any HR insert/delete (the fingerprint moves), so it self-heals.
+    /// Versioned input watermark of the last completed pass, shared by idle and duplicate-offload gates.
     private static let analyzeWatermarkKey = "noop.analyzeWatermark"
+
+    nonisolated static func shouldSkipRescore(force: Bool, skipIfUnchanged: Bool,
+                                             fingerprint: String, previous: String?) -> Bool {
+        (!force || skipIfUnchanged) && !fingerprint.isEmpty && fingerprint == previous
+    }
 
     /// CAPTURE-B (#814/#799): build the universal `dayOwner …` self-diagnostic line VERBATIM (the Test
     /// Centre export parser depends on this exact shape). `readId` is the owner this day was read+scored
@@ -1667,12 +1739,20 @@ final class IntelligenceEngine: ObservableObject {
         if !updated.isEmpty { _ = try? await store.upsertWorkouts(updated, deviceId: deviceId) }
     }
 
+    /// Attach the seeded temperature deviation before scoring, so the score and its drivers agree.
+    static func recomputeRecoveryDaily(_ daily: DailyMetric, nightlySkinTempC: Double?,
+                                       baselines: AnalyticsEngine.ProfileBaselines) -> DailyMetric {
+        let skinDev = recomputeSkinTempDev(nightlySkinTempC, baselines.skinTemp)
+        let input = daily.with(recovery: daily.recovery, skinTempDevC: skinDev)
+        return input.with(recovery: recomputeRecovery(input, baselines), skinTempDevC: skinDev)
+    }
+
     /// Re-score ONLY the recovery composite for a day against a (re-seeded) baseline. Every other field
     /// in `daily` is baseline-independent and already final from pass 1. Returns nil until the HRV
     /// baseline is usable (RecoveryScorer gates on `hrvBaseline.usable`, i.e. ≥ minNightsSeed valid
     /// nights) , so the honest null-until-4-nights cold-start is free. Mirrors AnalyticsEngine's own
     /// recovery call + Android IntelligenceEngine.recomputeRecovery. (#78)
-    private func recomputeRecovery(_ daily: DailyMetric, _ baselines: AnalyticsEngine.ProfileBaselines) -> Double? {
+    private static func recomputeRecovery(_ daily: DailyMetric, _ baselines: AnalyticsEngine.ProfileBaselines) -> Double? {
         guard let hrvVal = daily.avgHrv, let rhrVal = daily.restingHr, let hrvBase = baselines.hrv else { return nil }
         // Charge enrichment: feed the Rest COMPOSITE (÷100) as the sleep-quality term instead of raw
         // efficiency, and fold in the night's skin-temp deviation. Both come from the persisted daily
@@ -1829,7 +1909,7 @@ final class IntelligenceEngine: ObservableObject {
     /// baseline, mirroring the avgHrv→recovery re-score. Nil when the night had no wear-gated mean or
     /// the skin-temp baseline isn't usable yet (< minNightsSeed) , honest cold-start. Rounded to 2 dp
     /// to match the imported/demo precision. APPROXIMATE.
-    private func recomputeSkinTempDev(_ nightly: Double?, _ base: BaselineState?) -> Double? {
+    private static func recomputeSkinTempDev(_ nightly: Double?, _ base: BaselineState?) -> Double? {
         guard let v = nightly, let b = base, b.usable else { return nil }
         return (Baselines.deviation(v, state: b).delta * 100.0).rounded() / 100.0
     }

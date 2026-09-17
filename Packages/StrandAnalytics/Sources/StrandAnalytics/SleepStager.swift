@@ -50,11 +50,13 @@ public struct SleepSession: Equatable, Sendable {
     public let restingHR: Int?
     /// Mean RMSSD over 5-min windows across the session (ms), or nil.
     public let avgHRV: Double?
+    public let hrOnly: Bool
 
     public init(start: Int, end: Int, efficiency: Double, stages: [StageSegment],
-                restingHR: Int?, avgHRV: Double?) {
+                restingHR: Int?, avgHRV: Double?, hrOnly: Bool = false) {
         self.start = start; self.end = end; self.efficiency = efficiency
         self.stages = stages; self.restingHR = restingHR; self.avgHRV = avgHRV
+        self.hrOnly = hrOnly
     }
 }
 
@@ -223,6 +225,8 @@ public enum SleepStager {
     /// shredded into sub-minSleepMin fragments by gravity dropouts. Sized at the daytime-nap
     /// floor (a real continuous night never has a true >90 min wake bridge mid-sleep).
     public static let sparseBridgeGapMin: Int = 90
+    public static let sparseBridgeActiveMaxMin: Int = 30
+    public static let sparseBridgeActiveMaxInBandMin: Int = 60
 
     // MARK: - Stage 1–3 constants (sleep_features.py)
 
@@ -480,62 +484,62 @@ public enum SleepStager {
         let reason: String
     }
 
-    /// Per-pair explanation of `bridgeSparseSleep`, mirroring its rule EXACTLY (same adjacency walk,
-    /// same `gap >= 0 && gap <= sparseBridgeGapMin*60`, same HR-band check) so the reasons describe what
-    /// actually happened rather than an approximation. Only pairs the bridge itself CONSIDERS (two
-    /// adjacent sleep runs) produce an attempt; a pair separated by an active run is never considered,
-    /// which is itself the answer when no attempts are reported. Pure — no I/O, no side effects.
+    /// Share the bridge decision with diagnostics so reported and applied joins cannot diverge.
     static func sparseBridgeAttempts(_ periods: [Period], sparse: Bool,
                                      hr: [HRSample], baseline: Double?) -> [SparseBridgeAttempt] {
-        guard sparse, !periods.isEmpty else { return [] }
-        let bridgeGapS = sparseBridgeGapMin * 60
-        var attempts: [SparseBridgeAttempt] = []
+        bridgeSparseSleepTraced(periods, enabled: sparse, hr: hr, baseline: baseline).attempts
+    }
+
+    /// Upstream bridge: short motion-labelled interruptions may join only with sleep-band HR.
+    static func bridgeSparseSleep(_ periods: [Period], sparse: Bool,
+                                  hr: [HRSample], baseline: Double?) -> [Period] {
+        bridgeSparseSleepTraced(periods, enabled: sparse, hr: hr, baseline: baseline).periods
+    }
+
+    static func isFragmentedToNothing(_ spans: [Int], minSleepS: Int) -> Bool {
+        spans.count >= 2 && !spans.contains { $0 >= minSleepS } && spans.reduce(0, +) >= minSleepS
+    }
+
+    private static func bridgeSparseSleepTraced(_ periods: [Period], enabled: Bool,
+                                                hr: [HRSample], baseline: Double?)
+        -> (periods: [Period], attempts: [SparseBridgeAttempt]) {
+        guard enabled, !periods.isEmpty else { return (periods, []) }
         var out: [Period] = []
+        var attempts: [SparseBridgeAttempt] = []
         for p in periods {
-            if let last = out.last, last.stage == "sleep", p.stage == "sleep" {
-                let gap = p.start - last.end
-                let inBand = hrSleepBandAcross(last.end, p.start, hr: hr, baseline: baseline)
-                let bridged = gap >= 0 && gap <= bridgeGapS && inBand
+            var leftIndex: Int?
+            var activeS = 0
+            if p.stage == "sleep", let last = out.last {
+                if last.stage == "sleep" {
+                    leftIndex = out.count - 1
+                } else if last.stage == "active", out.count >= 2, out[out.count - 2].stage == "sleep" {
+                    leftIndex = out.count - 2
+                    activeS = last.end - last.start
+                }
+            }
+            if let leftIndex {
+                let left = out[leftIndex]
+                let gap = p.start - left.end
+                let inBand = hrSleepBandAcross(left.end, p.start, hr: hr, baseline: baseline)
+                let capS = (inBand ? sparseBridgeActiveMaxInBandMin : sparseBridgeActiveMaxMin) * 60
                 let reason: String
-                if bridged { reason = "bridged" }
-                else if gap < 0 { reason = "overlap" }
-                else if gap > bridgeGapS { reason = "gapTooLong" }
-                else { reason = "hrOutOfBand" }
+                if gap < 0 { reason = "overlap" }
+                else if gap > sparseBridgeGapMin * 60 { reason = "gapTooLong" }
+                else if activeS > capS { reason = "activeTooLong" }
+                else if !inBand { reason = "hrOutOfBand" }
+                else { reason = "bridged" }
+                let bridged = reason == "bridged"
                 attempts.append(SparseBridgeAttempt(gapMin: gap / 60, hrInSleepBand: inBand,
                                                     bridged: bridged, reason: reason))
                 if bridged {
-                    out[out.count - 1] = Period(stage: "sleep", start: last.start, end: p.end)
+                    out.removeSubrange((leftIndex + 1)..<out.count)
+                    out[leftIndex] = Period(stage: "sleep", start: left.start, end: p.end)
                     continue
                 }
             }
             out.append(p)
         }
-        return attempts
-    }
-
-    /// Sparse-gravity bridge (#308): merge two adjacent SLEEP runs separated ONLY by a gap up to
-    /// sparseBridgeGapMin minutes when the intervening HR stays in the sleep band — so a real night
-    /// fragmented by gravity dropouts is re-stitched into one continuous in-bed span BEFORE the
-    /// minSleepMin gate drops the pieces. Active runs and over-threshold gaps are left untouched;
-    /// the span between two bridged sleep runs (an "active"/gap run, if present) is absorbed.
-    /// A no-op when `sparse == false`, so the dense 4.0 path is unchanged.
-    static func bridgeSparseSleep(_ periods: [Period], sparse: Bool,
-                                  hr: [HRSample], baseline: Double?) -> [Period] {
-        if !sparse || periods.isEmpty { return periods }
-        let bridgeGapS = sparseBridgeGapMin * 60
-        var out: [Period] = []
-        for p in periods {
-            if let last = out.last, last.stage == "sleep", p.stage == "sleep" {
-                let gap = p.start - last.end
-                if gap >= 0 && gap <= bridgeGapS
-                    && hrSleepBandAcross(last.end, p.start, hr: hr, baseline: baseline) {
-                    out[out.count - 1] = Period(stage: "sleep", start: last.start, end: p.end)
-                    continue
-                }
-            }
-            out.append(p)
-        }
-        return out
+        return (out, attempts)
     }
 
     // MARK: - HR refinement
@@ -928,28 +932,27 @@ public enum SleepStager {
         let flags = classifyStill(grav, deltas)
         var runs = buildRuns(grav, flags, sparse: sparse, hr: hrS, baseline: baseline)
         runs = mergePeriods(runs)
-        // Re-stitch sleep runs fragmented by pure gravity dropouts (sparse only) before minSleepMin.
+        // Rescue sparse nights, or fragmented dense nights with no individually viable sleep run.
+        let bridgeEnabled = sparse || isFragmentedToNothing(
+            runs.filter { $0.stage == "sleep" }.map { $0.end - $0.start }, minSleepS: minSleepMin * 60)
         let runsBeforeBridge = traceSink == nil ? 0 : runs.filter { $0.stage == "sleep" }.count
         // #737: capture the per-pair reasons BEFORE the merge mutates `runs`, so a bridge that changed
         // nothing still says why (gapTooLong / hrOutOfBand / overlap) instead of only before==after.
-        let bridgeAttempts = traceSink == nil ? [] : sparseBridgeAttempts(runs, sparse: sparse, hr: hrS,
+        let bridgeAttempts = traceSink == nil ? [] : sparseBridgeAttempts(runs, sparse: bridgeEnabled, hr: hrS,
                                                                          baseline: baseline)
-        runs = bridgeSparseSleep(runs, sparse: sparse, hr: hrS, baseline: baseline)
+        runs = bridgeSparseSleep(runs, sparse: bridgeEnabled, hr: hrS, baseline: baseline)
         // Sleep & Rest test mode (E3): record the sparse-gravity bridge result, so a sparse 5.0 night
-        // rescued from fragmentation is visible. Only emitted when gravity is sparse (the only case the
-        // bridge can act) and only when tracing. Side-effect-only.
-        if let traceSink, sparse {
+        // rescued from fragmentation is visible. Emitted only when the bridge is enabled and tracing.
+        if let traceSink, bridgeEnabled {
             let runsAfterBridge = runs.filter { $0.stage == "sleep" }.count
             traceSink(GateTrace.runLine(index: -1, startTs: 0, endTs: 0,
                 verdict: runsAfterBridge < runsBeforeBridge ? .kept : .dropped, gate: "sparseBridge",
-                detail: "sparse=true gapMin=\(sparseBridgeGapMin) runsBefore=\(runsBeforeBridge) runsAfter=\(runsAfterBridge)"))
-            // #737: one line per pair the bridge CONSIDERED. No lines at all means no two adjacent sleep
-            // runs were ever seen — i.e. the fragments are separated by active runs, which the bridge
-            // deliberately never crosses. That absence is itself the diagnosis.
+                detail: "sparse=\(sparse) gapMin=\(sparseBridgeGapMin) runsBefore=\(runsBeforeBridge) runsAfter=\(runsAfterBridge)"))
+            // One line per considered pair, including a single intervening motion-labelled run.
             if bridgeAttempts.isEmpty {
                 traceSink(GateTrace.runLine(index: -1, startTs: 0, endTs: 0, verdict: .dropped,
                     gate: "sparseBridge",
-                    detail: "no adjacent sleep pairs considered (fragments separated by active runs)"))
+                    detail: "no candidate pairs (single sleep run or consecutive active runs)"))
             }
             for (i, a) in bridgeAttempts.enumerated() {
                 traceSink(GateTrace.runLine(index: -1, startTs: 0, endTs: 0,

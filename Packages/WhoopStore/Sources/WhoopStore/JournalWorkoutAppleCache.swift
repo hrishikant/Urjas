@@ -141,31 +141,48 @@ extension WhoopStore {
     @discardableResult
     public func upsertWorkouts(_ rows: [WorkoutRow], deviceId: String) async throws -> Int {
         try syncWrite { db in
-            var n = 0
-            for r in rows {
-                try db.execute(sql: """
-                    INSERT INTO workout
-                        (deviceId, startTs, endTs, sport, source, durationS, energyKcal,
-                         avgHr, maxHr, strain, distanceM, zonesJSON, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(deviceId, startTs, sport) DO UPDATE SET
-                        endTs = excluded.endTs,
-                        source = excluded.source,
-                        durationS = excluded.durationS,
-                        energyKcal = excluded.energyKcal,
-                        avgHr = excluded.avgHr,
-                        maxHr = excluded.maxHr,
-                        strain = excluded.strain,
-                        distanceM = excluded.distanceM,
-                        zonesJSON = excluded.zonesJSON,
-                        notes = excluded.notes
-                    """, arguments: [deviceId, r.startTs, r.endTs, r.sport, r.source, r.durationS,
-                                     r.energyKcal, r.avgHr, r.maxHr, r.strain, r.distanceM,
-                                     r.zonesJSON, r.notes])
-                n += db.changesCount
-            }
-            return n
+            try Self.upsertWorkouts(rows, deviceId: deviceId, in: db)
         }
+    }
+
+    /// Replace only the derived source in one transaction; a failed insert cannot erase prior bouts.
+    public func replaceDetectedWorkouts(_ rows: [WorkoutRow], deviceId: String,
+                                        from: Int, to: Int) async throws {
+        try syncWrite { db in
+            try db.execute(sql: """
+                DELETE FROM workout WHERE deviceId = ? AND source = ? AND startTs >= ? AND startTs <= ?
+                """, arguments: [deviceId, deviceId, from, to])
+            _ = try Self.upsertWorkouts(rows, deviceId: deviceId, in: db, onlyMatchingSource: true)
+        }
+    }
+
+    private static func upsertWorkouts(_ rows: [WorkoutRow], deviceId: String, in db: Database,
+                                       onlyMatchingSource: Bool = false) throws -> Int {
+        var n = 0
+        for r in rows {
+            try db.execute(sql: """
+                INSERT INTO workout
+                    (deviceId, startTs, endTs, sport, source, durationS, energyKcal,
+                     avgHr, maxHr, strain, distanceM, zonesJSON, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(deviceId, startTs, sport) DO UPDATE SET
+                    endTs = excluded.endTs,
+                    source = excluded.source,
+                    durationS = excluded.durationS,
+                    energyKcal = excluded.energyKcal,
+                    avgHr = excluded.avgHr,
+                    maxHr = excluded.maxHr,
+                    strain = excluded.strain,
+                    distanceM = excluded.distanceM,
+                    zonesJSON = excluded.zonesJSON,
+                    notes = excluded.notes
+                WHERE ? = 0 OR workout.source = excluded.source
+                """, arguments: [deviceId, r.startTs, r.endTs, r.sport, r.source, r.durationS,
+                                 r.energyKcal, r.avgHr, r.maxHr, r.strain, r.distanceM,
+                                 r.zonesJSON, r.notes, onlyMatchingSource])
+            n += db.changesCount
+        }
+        return n
     }
 
     /// Delete one source's workouts of a given sport whose startTs is in [from, to]

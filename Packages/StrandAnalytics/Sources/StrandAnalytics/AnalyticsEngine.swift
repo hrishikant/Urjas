@@ -205,10 +205,24 @@ public enum AnalyticsEngine {
     /// unstable order (it can vary call to call), which would make stored stage JSON non-reproducible
     /// and defeat the post-sync self-heal's "skip the write when the re-derived JSON is unchanged" check.
     /// Decoders are key-order-independent, so this is purely a stabilization.
-    public static func encodeStages(_ stages: [StageSegment]) -> String? {
+    public static func encodeStages(_ stages: [StageSegment], hrOnly: Bool = false) -> String? {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
-        guard let data = try? encoder.encode(stages) else { return nil }
+        struct TaggedStage: Encodable {
+            let start: Int
+            let end: Int
+            let stage: String
+            let hrOnly: Bool
+        }
+        let data: Data?
+        if hrOnly {
+            data = try? encoder.encode(stages.map {
+                TaggedStage(start: $0.start, end: $0.end, stage: $0.stage, hrOnly: true)
+            })
+        } else {
+            data = try? encoder.encode(stages)
+        }
+        guard let data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
@@ -360,7 +374,8 @@ public enum AnalyticsEngine {
                                   // #141: when true, the nightly HRV is RMSSD over DEEP-sleep windows only
                                   // (WHOOP-style), instead of the whole-night mean. Threaded from the caller
                                   // (UnitPrefs.hrvWindowKey). Default false = byte-identical whole-night value.
-                                  deepHrvWindow: Bool = false) -> DayResult {
+                                  deepHrvWindow: Bool = false,
+                                  useHROnlySleep: Bool = false) -> DayResult {
 
         // Precompute the day's UTC bounds ONCE (#996). `dayString(ts, offsetSec:)` formats the UTC
         // calendar day of (ts + offset) with a FIXED offset, so "== day" is exactly membership in
@@ -373,7 +388,10 @@ public enum AnalyticsEngine {
         func tsInDay(_ ts: Int) -> Bool { (ts + tzOffsetSeconds) >= dayStartUtc && (ts + tzOffsetSeconds) < dayEndUtc }
 
         // ── Sleep detection + staging ─────────────────────────────────────────
-        let detectedSessions = SleepStager.detectSleep(hr: hr, rr: rr, resp: resp, gravity: gravity,
+        let detectedSessions = useHROnlySleep && gravity.count < 2
+            ? SleepStager.hrOnlySessions(hr: hr, rr: rr, resp: resp,
+                                         tzOffsetSeconds: tzOffsetSeconds, wristOff: wristOff, traceSink: traceSink)
+            : SleepStager.detectSleep(hr: hr, rr: rr, resp: resp, gravity: gravity,
                                                   tzOffsetSeconds: tzOffsetSeconds, wristOff: wristOff,
                                                   bandSleepState: bandSleepState,
                                                   useSleepStagerV2: useSleepStagerV2,
@@ -776,7 +794,7 @@ public enum AnalyticsEngine {
                 efficiency: s.efficiency,
                 restingHr: s.restingHR,
                 avgHrv: s.avgHRV,
-                stagesJSON: encodeStages(s.stages))
+                stagesJSON: encodeStages(s.stages, hrOnly: s.hrOnly))
         }
 
         // ── Per-session per-epoch motion (H8) ─────────────────────────────────

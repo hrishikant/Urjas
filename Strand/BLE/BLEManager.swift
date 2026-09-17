@@ -832,6 +832,9 @@ public final class BLEManager: NSObject, ObservableObject {
     /// threshold fires once the pairing HINT has had several cycles to be acted on. Reset on a genuine bond
     /// or an explicit user reconnect (so a manual retry re-arms auto-reconnect).
     private var bondGiveUp = BondRefusalGiveUp()
+    private var unansweredHelloCounts: [UUID: Int] = [:]
+    private var clientHelloPending = false
+    private var userRequestedHello = false
     /// True while auto-reconnect is PAUSED by the #747 give-up. The disconnect-rescan and the
     /// failed-connect backoff both consult this and skip scheduling a reconnect; a manual connect()/
     /// disconnect() clears it via `bondGiveUp.reset()`. Distinct from `intentionalDisconnect` so a paused
@@ -1074,6 +1077,7 @@ public final class BLEManager: NSObject, ObservableObject {
     /// silently un-pause the give-up and re-run the full refusal hammer, forever, one burst per event
     /// (#78 hole-2; Android's onBluetoothRadioOn always had the correct one-attempt-latched shape).
     public func connect(model: WhoopModel = .persisted) {
+        userRequestedHello = true
         // #747/#750: re-arm on the user's explicit retry: clear the give-up streak + pause so this fresh
         // attempt isn't immediately re-paused and the auto-reconnect works again if it bonds.
         if autoReconnectPausedForBondLoop {
@@ -1201,6 +1205,7 @@ public final class BLEManager: NSObject, ObservableObject {
     /// reconnects (which clears `intentionalDisconnect` again via connect()).
     public func forgetDevice(_ peripheralId: String?) {
         let target = peripheralId.flatMap { UUID(uuidString: $0) }
+        let releasedId = target ?? peripheral?.identifier
         let isCurrent = target == nil || peripheral?.identifier == target
         intentionalDisconnect = true            // defuses the disconnect→3s-reconnect loop's guard
         cancelScanFallback()
@@ -1219,6 +1224,10 @@ public final class BLEManager: NSObject, ObservableObject {
             state.encryptedBond = false
             state.pairingHint = nil
             bondRefusalStreak = 0
+        }
+        if let releasedId {
+            HelloSuppression.clear(releasedId)
+            unansweredHelloCounts.removeValue(forKey: releasedId)
         }
         // #747/#750 invariant: releasing a strap fully resets the give-up + pause (like disconnect()) so
         // a paused state can never outlive the strap it belonged to and wedge a later re-add.
@@ -3418,7 +3427,8 @@ public final class BLEManager: NSObject, ObservableObject {
     }
 
     private func keepAliveFire() {
-        guard state.connected, didBond else { return }
+        guard HelloSuppression.keepAliveMayRun(connected: state.connected, didBond: didBond,
+                                               bonded: state.bonded, family: selectedModel.deviceFamily) else { return }
         enableLiveNotifications(reason: "keepalive")
         // Liveness watchdog: if NOTHING has arrived for a while, the stream/link stalled.
         // Bounce the connection — the auto-rescan on disconnect re-bonds and resumes streaming.
@@ -3434,7 +3444,7 @@ public final class BLEManager: NSObject, ObservableObject {
             if let p = peripheral { central.cancelPeripheralConnection(p) }
             return
         }
-        guard !backfilling else { return }            // never poke the strap mid-offload
+        guard didBond, !backfilling else { return }   // unpaired fallback runs only the liveness watchdog
         // #927: continuous capture can be overnight-only, which makes the want TIME-dependent; nothing
         // else re-evaluates it while the app just sits connected, so the keep-alive tick re-derives it.
         // A window-close tick DISARMS (stop the heavy R10/R11 burst, then the reconciler sends TOGGLE 0
@@ -3565,6 +3575,7 @@ public final class BLEManager: NSObject, ObservableObject {
     }
 
     private func resetCharacteristics() {
+        clientHelloPending = false
         cmdCharacteristic = nil
         cmdNotifyCharacteristic = nil
         eventNotifyCharacteristic = nil
@@ -3980,6 +3991,7 @@ public final class BLEManager: NSObject, ObservableObject {
             return
         }
         let now = Date()
+        let rr = StandardHeartRate.intervals(rr: m.rr, rawTicks: m.rrRawTicks, family: router.family)
         if lastStandardHRLogAt.map({ now.timeIntervalSince($0) >= 30 }) ?? true {
             lastStandardHRLogAt = now
             let plausibility = (30...220).contains(m.hr) ? "" : " ignored"
@@ -3988,14 +4000,14 @@ public final class BLEManager: NSObject, ObservableObject {
         // R-R: the standard profile is the RELIABLE source (the custom REALTIME_DATA stream
         // usually reports rr_count=0), so always surface intervals when present. setRRIntervals also
         // feeds the Live console's rolling rrRecent buffer.
-        if !m.rr.isEmpty { state.setRRIntervals(m.rr) }
+        if !rr.isEmpty { state.setRRIntervals(rr) }
         // HR: the standard 0x2A37 profile is the RELIABLE source (BLE-standard, ~1Hz). Let it
         // drive the value whenever it's physiologically plausible; reject 0/garbage (off-wrist).
         // AppModel medians these into a stable display value. live perf: only publish on a real
         // change so a steady resting HR doesn't re-render the whole Live console every second.
         if m.hr >= 30 && m.hr <= 220, state.heartRate != m.hr { state.heartRate = m.hr }
         // Record it continuously — independent of the realtime stream or the open screen.
-        collector?.ingestStandardHR(hr: m.hr, rr: m.rr, at: Int(Date().timeIntervalSince1970))
+        collector?.ingestStandardHR(hr: m.hr, rr: rr, at: Int(Date().timeIntervalSince1970))
     }
 }
 
@@ -4263,6 +4275,17 @@ extension BLEManager: @preconcurrency CBCentralManagerDelegate {
     public func centralManager(_ central: CBCentralManager,
                                didDisconnectPeripheral peripheral: CBPeripheral,
                                error: Error?) {
+        if HelloSuppression.countsAsUnanswered(pending: clientHelloPending, bonded: didBond,
+                                               intentional: intentionalDisconnect,
+                                               family: selectedModel.deviceFamily) {
+            let id = peripheral.identifier
+            unansweredHelloCounts[id, default: 0] += 1
+            if unansweredHelloCounts[id, default: 0] >= HelloSuppression.threshold {
+                UserDefaults.standard.set(true, forKey: HelloSuppression.key(id))
+                log("WHOOP 5/MG: unanswered handshake, keeping automatic reconnects on live HR. Connect retries full pairing.")
+            }
+        }
+        clientHelloPending = false
         Task { @MainActor in await collector?.flush() }
         // Reboot trail: if a user reboot is in flight, this drop is the strap acting on it. Log how long
         // the link stayed up (a real reboot drops within ~1-2 s) and cancel the no-disconnect watchdog. The
@@ -4662,6 +4685,14 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
                 // fires for a 5/MG strap. Live HR/battery come from the standard profiles; this just
                 // opens the puffin session. Unverified on real MG hardware.
                 cmdCharacteristic = c
+                let retry = userRequestedHello
+                userRequestedHello = false
+                guard HelloSuppression.shouldSend(suppressed: HelloSuppression.suppressed(peripheral.identifier),
+                                                  userInitiated: retry) else {
+                    state.pairingHint = "Live HR only, not fully paired. Tap Connect to retry pairing and history sync."
+                    log("WHOOP 5/MG: skipping the unanswered CLIENT_HELLO, keeping live HR connected.")
+                    break
+                }
                 if let hello = selectedModel.deviceFamily.clientHello {
                     // CONTRIBUTOR FIX (issue #17 — diagnosed from the logs, unverified on hardware here):
                     // write CLIENT_HELLO with .withResponse so CoreBluetooth runs just-works bonding when
@@ -4672,6 +4703,7 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
                     // "Finishing the secure pairing handshake…".
                     log("WHOOP 5/MG: writing CLIENT_HELLO to fd4b0002 with response (to trigger bonding, experimental).")
                     state.pairingHint = nil   // fresh attempt; clear any stale pairing-mode guidance
+                    clientHelloPending = true
                     peripheral.writeValue(Data(hello), for: c, type: .withResponse)
                 }
                 // The realtime-HR stream is armed POST-bond (in didWriteValueFor / startRealtime) with
@@ -4720,6 +4752,9 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
     public func peripheral(_ peripheral: CBPeripheral,
                            didWriteValueFor characteristic: CBCharacteristic,
                            error: Error?) {
+        if characteristic.uuid == BLEManager.whoop5CmdWriteChar {
+            clientHelloPending = false
+        }
         if let error = error {
             log("Confirmed write failed: \(error.localizedDescription)")
             // #78 hole-1: classify by ATT code first (locale-proof), English string fallback second.
@@ -4799,6 +4834,8 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
         // below — a 5/MG strap rejects WHOOP4-framed commands (the send() guard drops them anyway).
         if selectedModel.deviceFamily == .whoop5 {
             if !didBond {
+                HelloSuppression.clear(peripheral.identifier)
+                unansweredHelloCounts.removeValue(forKey: peripheral.identifier)
                 didBond = true
                 state.bonded = true
                 state.encryptedBond = true   // genuine encrypted bond (not the live-HR shortcut) — #69
@@ -5124,6 +5161,7 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
             // otherwise the UI sits on "Connecting…" forever even though data is flowing (issue #8).
             if selectedModel.deviceFamily == .whoop5, !state.bonded {
                 state.bonded = true
+                startKeepAlive()
                 log("WHOOP 5/MG: live HR streaming — marking the link established (experimental).")
             }
         case BLEManager.batteryChar:
