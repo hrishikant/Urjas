@@ -1875,4 +1875,5 @@
     </plurals>
     <string name="l10n_app_changelog_widgets_stop_inventing_numbers_naps_count_4f7491bb">Os widgets deixam de inventar números, as sestas contam para a dívida de sono, e os indicadores Android falam a tua língua</string>
     <string name="l10n_app_changelog_your_today_screen_now_tells_you_1edd2126">Your Today screen now tells you what to do, not just your numbers</string>
+    <string name="l10n_app_changelog_workouts_you_played_while_the_app_2f5e6ca9">Workouts you played while the app was closed now get found</string>
 </resources>

@@ -26,7 +26,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "9.3.10"
+    const val CURRENT_VERSION = "9.3.11"
 
     data class Release(
         val version: String,
@@ -37,6 +37,16 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "9.3.11",
+            title = uiString(R.string.l10n_app_changelog_workouts_you_played_while_the_app_2f5e6ca9),
+            date = "September 2026",
+            items = listOf(
+                "**Sessions the app slept through are now recovered.** If you play a sport while Ūrjas is closed or asleep, it used to be lost , the old detector only worked when your phone recorded motion. Now, once your band syncs its stored heart-rate history, Ūrjas spots the workout from your heart rate alone and offers to save it.",
+                "**A simple confirm card.** When a new session is found, the Today screen shows a \"We found a workout\" card with the best-guess sport, duration and time. Tap Confirm to keep it, change the sport, or mark it as not a workout , nothing is saved silently.",
+                "**Full analysis, same as any workout.** A recovered session comes with heart-rate zones, strain, calories and average and peak heart rate, and it won't duplicate a workout you already logged.",
+            ),
+        ),
         Release(
             version = "9.3.10",
             title = uiString(R.string.l10n_app_changelog_your_today_screen_now_tells_you_1edd2126),
