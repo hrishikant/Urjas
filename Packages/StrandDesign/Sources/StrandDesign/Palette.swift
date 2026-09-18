@@ -65,20 +65,72 @@ public extension Color {
 // of the type; nothing existing was removed or renamed.
 
 public enum StrandPalette {
+    private enum LegacyChrome {
+        static let surfaceBase = Color(light: "#F2F2F7", dark: "#121518")
+        static let surfaceRaised = Color(light: "#FFFFFF", dark: "#25292C")
+        static let surfaceOverlay = Color(light: "#FFFFFF", dark: "#1C1F26")
+        static let surfaceInset = Color(light: "#E9E9EE", dark: "#1F2229")
+        static let hairline = Color(light: "#D8D0BD", dark: "#21304A")
+        static let hairlineStrong = Color(light: "#C7BCA4", dark: "#2E3C57")
+        static let textPrimary = Color(light: "#1A2230", dark: "#F4F6F8")
+        static let textSecondary = Color(light: "#4C5564", dark: "#C8CFD8")
+        static let textTertiary = Color(light: "#7C8696", dark: "#8A94A4")
+        static let accent = Color(light: "#234F9E", dark: "#60A0E0")
+        static let accentHover = Color(light: "#1C3F80", dark: "#8FBEEC")
+        static let accentMuted = Color(light: "#E4ECF6", dark: "#16233A")
+        static let focusRing = Color(light: "#2F6FCB", dark: "#60A0E0")
+    }
+
+    // Cache providers, not the preference: token identity stays stable between appearance changes.
+    private enum RhythmChrome {
+        static let surfaceBase = Color(light: "#F6F7F2", dark: "#141C18")
+        static let surfaceRaised = Color(light: "#FFFFFF", dark: "#1D2822")
+        static let surfaceInset = Color(light: "#F0F2EB", dark: "#253128")
+        static let hairline = Color(light: "#E1E6DC", dark: "#344237")
+        static let hairlineStrong = Color(light: "#879087", dark: "#88998B")
+        static let textPrimary = Color(light: "#24372C", dark: "#EDF1E8")
+        static let textSecondary = Color(light: "#667268", dark: "#B1BDB0")
+        static let textTertiary = Color(light: "#879087", dark: "#88998B")
+        static let accentMuted = Color(light: "#E8F0DD", dark: "#2C3E2D")
+        static let recovery = Color(light: "#2A694E", dark: "#B8D991")
+        static let sleep = Color(light: "#7B63A5", dark: "#C6B6E8")
+        static let strain = Color(light: "#B46231", dark: "#E6B082")
+        static let hero = Color(light: "#EDF2E4", dark: "#293B2C")
+        static let buttonFill = Color(light: "#24573F", dark: "#CCEAA5")
+        static let buttonText = Color(light: "#FFFFFF", dark: "#203422")
+    }
 
     // MARK: Surfaces — deep navy canvas, tinted frosted cards
     // Background is a near-black navy (NOT pure black); cards float just above it.
-    public static let surfaceBase    = Color(light: "#F2F2F7", dark: "#121518") // WHOOP dark blue-grey canvas (sampled)
-    public static let surfaceRaised  = Color(light: "#FFFFFF", dark: "#25292C") // WHOOP grey list-card fill (sampled)
-    public static let surfaceOverlay = Color(light: "#FFFFFF", dark: "#1C1F26") // popovers / sheets / tooltips
-    public static let surfaceInset   = Color(light: "#E9E9EE", dark: "#1F2229") // wells / chart insets / segmented track
-    public static let hairline       = Color(light: "#D8D0BD", dark: "#21304A") // soft 1px border (stronger on light for card edges)
-    public static let hairlineStrong = Color(light: "#C7BCA4", dark: "#2E3C57") // hover / emphasis border
+    public static var surfaceBase: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.surfaceBase : LegacyChrome.surfaceBase
+    }
+    public static var surfaceRaised: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.surfaceRaised : LegacyChrome.surfaceRaised
+    }
+    public static var surfaceOverlay: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.surfaceRaised : LegacyChrome.surfaceOverlay
+    }
+    public static var surfaceInset: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.surfaceInset : LegacyChrome.surfaceInset
+    }
+    public static var hairline: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.hairline : LegacyChrome.hairline
+    }
+    public static var hairlineStrong: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.hairlineStrong : LegacyChrome.hairlineStrong
+    }
 
     // MARK: Text — deep navy-ink on paper / cool off-white on navy
-    public static let textPrimary    = Color(light: "#1A2230", dark: "#F4F6F8")
-    public static let textSecondary  = Color(light: "#4C5564", dark: "#C8CFD8")
-    public static let textTertiary   = Color(light: "#7C8696", dark: "#8A94A4")
+    public static var textPrimary: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.textPrimary : LegacyChrome.textPrimary
+    }
+    public static var textSecondary: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.textSecondary : LegacyChrome.textSecondary
+    }
+    public static var textTertiary: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.textTertiary : LegacyChrome.textTertiary
+    }
 
     // MARK: Text ON a permanently-dark surface (scheme-invariant)
     // Use these — NOT textPrimary/Secondary/Tertiary — for labels/pills drawn over a fill that is pinned
@@ -96,13 +148,42 @@ public enum StrandPalette {
     // MARK: Accent — chrome anchor (links, selection, focus, generic accent). On DARK this is the brand
     // GOLD; on LIGHT it shifts to the deep brand BLUE so gold is reserved for the recovery/Charge world
     // and the gold FAB — keeping the light theme from reading as wall-to-wall gold (the maintainer 2026-06-16).
-    public static let accent         = Color(light: "#234F9E", dark: "#60A0E0") // WHOOP link/action blue (gold killed 2026-06-22)
-    public static let accentHover    = Color(light: "#1C3F80", dark: "#8FBEEC")
-    public static let accentMuted    = Color(light: "#E4ECF6", dark: "#16233A") // selected-row tint (pale blue / dark blue)
+    public static var accent: Color {
+        UrjasAppearance.isRhythm ? rhythmRecovery : LegacyChrome.accent
+    }
+    public static var accentHover: Color {
+        UrjasAppearance.isRhythm ? rhythmButtonFill : LegacyChrome.accentHover
+    }
+    public static var accentMuted: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.accentMuted : LegacyChrome.accentMuted
+    }
     /// Focus ring color (blue on both schemes — WHOOP has no gold).
-    public static let focusRing      = Color(light: "#2F6FCB", dark: "#60A0E0")
+    public static var focusRing: Color {
+        UrjasAppearance.isRhythm ? rhythmRecovery : LegacyChrome.focusRing
+    }
     /// Opacity for dimmed/disabled sections (shared so screens don't invent their own value).
     public static let disabledOpacity: Double = 0.45
+
+    // MARK: Rhythm chrome — deliberately separate from chart ramps and semantic status colors.
+
+    public static var rhythmRecovery: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.recovery : chargeColor
+    }
+    public static var rhythmSleep: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.sleep : restColor
+    }
+    public static var rhythmStrain: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.strain : effortColor
+    }
+    public static var rhythmHero: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.hero : surfaceRaised
+    }
+    public static var rhythmButtonFill: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.buttonFill : accent
+    }
+    public static var rhythmButtonText: Color {
+        UrjasAppearance.isRhythm ? RhythmChrome.buttonText : onDarkPrimary
+    }
 
     // MARK: - Chart style (data-viz colour mode) — Titanium (brand) or Classic (throwback)
     //

@@ -25,6 +25,8 @@ private struct WorkoutRecoveryTrendPoint: Identifiable, Equatable {
 // No custom card heights, paddings, colours or surfaces — uniformity is the bar.
 
 struct WorkoutsView: View {
+    enum EntryAction { case start, add }
+
     @EnvironmentObject var repo: Repository
     /// #459: "Start Workout" used to live ONLY on the Live screen, so a user reaching Workouts (via the
     /// Quick-action FAB or the tab) had no way to begin one from the obvious place. Injected here so the
@@ -32,6 +34,10 @@ struct WorkoutsView: View {
     @EnvironmentObject var model: AppModel
     @State private var showLiveWorkout = false
     @State private var showStartSport = false
+    @State private var pendingBulkDelete: [WorkoutRow] = []
+    @State private var showBulkDeleteConfirmation = false
+    @State private var entryGate = RhythmSurfaceEntryGate()
+    private let initialAction: EntryAction?
 
     // Imperial/Metric display preference (D#103). Workout distances are stored in metres; the toggle
     // re-labels them to miles/yards. Display-only — nothing on disk changes.
@@ -40,7 +46,9 @@ struct WorkoutsView: View {
 
     // Effort display scale (#268) — drives the effort hero's read-out. Display-only.
     @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale {
+        UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm)
+    }
 
     /// All loaded sessions, newest first. Seedable for previews. #797: this holds only the rows inside the
     /// currently-LOADED window (`loadedWindowDays`), not the entire history. A 1700+-workout import made
@@ -126,16 +134,20 @@ struct WorkoutsView: View {
         let id = UUID()
     }
 
-    init(previewRows: [WorkoutRow]? = nil) {
+    init(previewRows: [WorkoutRow]? = nil, initialAction: EntryAction? = nil) {
         _allRows = State(initialValue: previewRows ?? [])
         _loaded = State(initialValue: previewRows != nil)
         // Preview-seeded rows are treated as the full history (nil window) so the preview path never pages.
         _loadedWindowDays = State(initialValue: previewRows != nil ? nil : Self.firstPaintWindowDays)
         usesPreviewRows = previewRows != nil
+        self.initialAction = initialAction
     }
 
     var body: some View {
-        ScreenScaffold(title: "Workouts", subtitle: "Every session, threaded together.",
+        ScreenScaffold(title: UrjasAppearance.isRhythm ? "Move your way." : "Workouts",
+                       subtitle: UrjasAppearance.isRhythm
+                        ? "Activity · The planned sessions. The spontaneous games. It all belongs here."
+                        : "Every session, threaded together.",
                        onRefresh: { await repo.refresh() },
                        // PERF: the column ends in the full "All Sessions" log (the breakdown grid, the
                        // zones card, and a row-per-session table). On a large imported history the eager
@@ -145,7 +157,9 @@ struct WorkoutsView: View {
                        // The day-of-sky liquid backdrop, matching Today / Health / Sleep / Trends: a fixed,
                        // full-bleed time-of-day sky behind the scroll content (it does not scroll).
                        topBackground: liquidScaffoldSky()) {
-            if allRows.isEmpty {
+            if UrjasAppearance.isRhythm {
+                rhythmContent
+            } else if allRows.isEmpty {
                 VStack(alignment: .leading, spacing: NoopMetrics.space4) {
                     ComingSoon(what: loaded
                         ? "No workouts yet. They come from your WHOOP and Apple Health history. Import in Data Sources to bring them in, or add one you tracked elsewhere."
@@ -179,6 +193,7 @@ struct WorkoutsView: View {
                 sessionsSection(rows: windowRows)
             }
         }
+        .accessibilityIdentifier("rhythm.activity.screen")
         .task(id: repo.refreshSeq) {
             guard !usesPreviewRows else { return }
             // #797: read only the currently-loaded window (bounded on first paint), not the whole history.
@@ -189,6 +204,7 @@ struct WorkoutsView: View {
             if !wasLoaded {
                 range = defaultRange(for: r)
                 seededInitialRange = true
+                if range == .all { await expandWindowIfNeeded(for: .all) }
             }
         }
         .onAppear {
@@ -197,6 +213,7 @@ struct WorkoutsView: View {
                 range = defaultRange(for: allRows)
                 seededInitialRange = true
             }
+            consumeInitialAction()
         }
         // #797: when the user picks a range wider than the bounded first-paint window (typically "All"),
         // page the full history in. A pick that fits the loaded window is a no-op. Also covers the
@@ -261,6 +278,172 @@ struct WorkoutsView: View {
                               subtitle: String(localized: "These sessions have no sport label yet. Pick one for the merged session."),
                               actionVerb: String(localized: "Merge")) { name in
                 performMerge(target.rows, sport: name)
+            }
+        }
+        .confirmationDialog("Delete selected sessions?", isPresented: $showBulkDeleteConfirmation,
+                            titleVisibility: .visible) {
+            Button("Delete \(pendingBulkDelete.count) sessions", role: .destructive) {
+                let rows = pendingBulkDelete.filter(WorkoutMerge.isMergeable)
+                pendingBulkDelete = []
+                selectionMode = false
+                selected.removeAll()
+                Task {
+                    await repo.bulkDeleteWorkouts(rows)
+                    await reload()
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingBulkDelete = [] }
+        } message: {
+            Text("Only your selected manual or detected sessions will be removed. Imported history stays read-only.")
+        }
+    }
+
+    private func consumeInitialAction() {
+        guard let action = entryGate.consume(initialAction) else { return }
+        switch action {
+        case .start: presentWorkoutStart()
+        case .add: sheet = WorkoutSheetTarget(editing: nil)
+        }
+    }
+
+    private func presentWorkoutStart() {
+        if model.activeWorkout == nil { showStartSport = true }
+        else { showLiveWorkout = true }
+    }
+
+    @ViewBuilder private var rhythmContent: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: NoopMetrics.gap) { startLiveWorkoutButton; addWorkoutButton }
+            VStack(alignment: .leading, spacing: NoopMetrics.gap) { startLiveWorkoutButton; addWorkoutButton }
+        }
+        #if os(iOS)
+        RhythmSurfaceFeatureGrid(features: [.live, .intervals, .workoutAutomation, .sportPrediction], compact: true)
+        #endif
+        if allRows.isEmpty {
+            ComingSoon(what: loaded
+                ? "Your activity journal starts here. Record a session, add one you tracked elsewhere, or bring in your history."
+                : "Loading your sessions…")
+            NavigationLink(value: TabRoute.dataSources) {
+                Label("Import activity history", systemImage: "square.and.arrow.down")
+                    .font(StrandFont.headline)
+                    .frame(minHeight: NoopMetrics.controlHeight)
+            }
+            .accessibilityIdentifier("rhythm.activity.import")
+        } else {
+            let resolved = effectiveRange
+            let windowRows = sessions(for: resolved)
+            let groups = sportGroups(from: windowRows)
+            rangeBar(rows: windowRows, effectiveRange: resolved)
+            if let postLogNote { postLogBanner(postLogNote) }
+            rhythmSummary(rows: windowRows, range: resolved)
+            rhythmDetectedReview(rows: windowRows)
+            sessionsSection(rows: windowRows)
+            breakdownSection(groups: groups, rows: windowRows)
+            if let zones = WorkoutZones.summary(from: windowRows) {
+                zonesSection(zones, totalSessions: windowRows.count)
+            }
+            recoveryTrendSection
+        }
+        #if os(iOS)
+        VStack(alignment: .leading, spacing: NoopMetrics.gap) {
+            SectionHeader("Your custom recording tools")
+            RhythmSurfaceFeatureGrid(features: [.liveSession, .liveActivity])
+            Text("Open a saved session for its available heart-rate recovery, DFA, zones and route. A sport suggestion is a starting point, not a certainty; your saved choice stays yours.")
+                .font(StrandFont.footnote)
+                .foregroundStyle(StrandPalette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        #endif
+    }
+
+    private func rhythmSummary(rows: [WorkoutRow], range: Range) -> some View {
+        let summary = RhythmActivitySummary(rows: rows)
+        return NoopCard(tint: StrandPalette.rhythmStrain) {
+            VStack(alignment: .leading, spacing: NoopMetrics.space5) {
+                Text(range == .week ? "A week of showing up." : "Making time to move.")
+                    .font(StrandFont.title2).foregroundStyle(StrandPalette.textPrimary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: NoopMetrics.gap) {
+                        rhythmActivityStats(summary)
+                    }
+                    VStack(alignment: .leading, spacing: NoopMetrics.space4) {
+                        rhythmActivityStats(summary)
+                    }
+                }
+                if !rows.isEmpty {
+                    rhythmActivityChart(rows: rows)
+                }
+                Divider().overlay(StrandPalette.hairline)
+                LazyVGrid(columns: tileColumns, alignment: .leading, spacing: NoopMetrics.space4) {
+                    RhythmSurfaceStat(title: String(localized: "Typical strain"),
+                        value: summary.averageStrain.map { UnitFormatter.effortDisplay($0, scale: .whoop) } ?? "—",
+                        caption: String(localized: "Session average · 0–21"), tint: StrandPalette.rhythmStrain)
+                    RhythmSurfaceStat(title: String(localized: "Recorded distance"),
+                        value: summary.distanceMeters.map { UnitFormatter.distanceFromKilometers($0 / 1000, system: unitSystem) } ?? "—")
+                    RhythmSurfaceStat(title: String(localized: "Recorded calories"),
+                        value: summary.calories.map(grouped) ?? "—", caption: "kcal")
+                }
+                Text(summary.detectedSessions > 0
+                     ? "\(summary.detectedSessions) detected sessions are included. Review their sport and timing in your journal."
+                     : "Recorded sessions in \(range.caption). Dates follow your latest stored session, not today's date.")
+                    .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityIdentifier("rhythm.activity.summary")
+    }
+
+    @ViewBuilder private func rhythmActivityStats(_ summary: RhythmActivitySummary) -> some View {
+        RhythmSurfaceStat(title: String(localized: "Sessions"), value: "\(summary.sessions)")
+        RhythmSurfaceStat(title: String(localized: "Time moving"),
+                          value: summary.durationSeconds.map { String(localized: "\(oneDecimal($0 / 3600))h") } ?? "—")
+        RhythmSurfaceStat(title: String(localized: "Active days"), value: "\(summary.activeDays)")
+    }
+
+    private func rhythmActivityChart(rows: [WorkoutRow]) -> some View {
+        let calendar = Calendar.current
+        let byDay = Dictionary(grouping: rows) {
+            calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval($0.startTs)))
+        }
+        let points = byDay.keys.sorted().compactMap { date -> (date: Date, minutes: Double)? in
+            let durations = (byDay[date] ?? []).compactMap(\.durationS).filter { $0.isFinite && $0 >= 0 }
+            guard !durations.isEmpty else { return nil }
+            return (date, durations.reduce(0, +) / 60)
+        }
+        return VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+            if !points.isEmpty {
+                Text("Recorded session minutes")
+                    .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                Chart(points, id: \.date) { point in
+                    BarMark(x: .value("Day", point.date, unit: .day),
+                            y: .value("Minutes", point.minutes))
+                        .foregroundStyle(StrandPalette.rhythmStrain)
+                        .cornerRadius(NoopMetrics.space1)
+                        .accessibilityLabel(point.date.formatted(date: .abbreviated, time: .omitted))
+                        .accessibilityValue("\(Int(point.minutes.rounded())) recorded minutes")
+                }
+                .chartYAxis { AxisMarks(position: .leading) }
+                .frame(height: NoopMetrics.tileHeight)
+                .accessibilityIdentifier("rhythm.activity.minutes")
+            }
+        }
+    }
+
+    @ViewBuilder private func rhythmDetectedReview(rows: [WorkoutRow]) -> some View {
+        let detected = rows.filter { WorkoutSource.classify($0.source) == .detected }
+        if let first = detected.first {
+            NoopCard(tint: StrandPalette.rhythmHero) {
+                VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+                    Label("A little review, a clearer story.", systemImage: "checkmark.circle")
+                        .font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
+                    Text("\(detected.count) possible sessions in this view. Confirm a sport, adjust the time, or dismiss a session that wasn't exercise.")
+                        .font(StrandFont.body).foregroundStyle(StrandPalette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    NoopButton("Review latest session", systemImage: "pencil", kind: .secondary) {
+                        editWorkout(first)
+                    }
+                    .accessibilityIdentifier("rhythm.activity.reviewDetected")
+                }
             }
         }
     }
@@ -443,7 +626,11 @@ struct WorkoutsView: View {
         let stacked = false
         #endif
         return VStack(alignment: .leading, spacing: 8) {
-            if stacked {
+            if UrjasAppearance.isRhythm {
+                SegmentedPillControl(Range.allCases, selection: $range) { $0.label }
+                    .accessibilityLabel("Activity date range")
+                    .accessibilityIdentifier("rhythm.activity.range")
+            } else if stacked {
                 // iPhone: button on its own row, the range pill full-width below — no crushed sliver.
                 addWorkoutButton
                 SegmentedPillControl(Range.allCases, selection: $range) { $0.label }
@@ -455,7 +642,7 @@ struct WorkoutsView: View {
                     SegmentedPillControl(Range.allCases, selection: $range) { $0.label }
                 }
             }
-            filterBar
+            if !UrjasAppearance.isRhythm { filterBar }
             Text(caption)
                 .font(StrandFont.footnote)
                 .foregroundStyle(fellBack ? StrandPalette.statusWarning : StrandPalette.textTertiary)
@@ -515,6 +702,7 @@ struct WorkoutsView: View {
                     .font(StrandFont.subhead)
                     .foregroundStyle(StrandPalette.textPrimary)
                     .textFieldStyle(.plain)
+                    .accessibilityIdentifier("rhythm.activity.search")
                     #if os(iOS)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -530,6 +718,7 @@ struct WorkoutsView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
+            .frame(minHeight: UrjasAppearance.isRhythm ? NoopMetrics.controlHeight : 0)
             .background(StrandPalette.surfaceInset.opacity(0.6),
                         in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
@@ -549,13 +738,14 @@ struct WorkoutsView: View {
             .foregroundStyle(active ? StrandPalette.effortColor : StrandPalette.textSecondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+            .frame(minHeight: UrjasAppearance.isRhythm ? NoopMetrics.controlHeight : 0)
             .background(
                 (active ? StrandPalette.effortColor.opacity(0.14) : StrandPalette.surfaceInset.opacity(0.6)),
                 in: Capsule()
             )
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
+        .fixedSize(horizontal: !UrjasAppearance.isRhythm, vertical: true)
         .accessibilityLabel(a11y)
         .accessibilityValue(title)
     }
@@ -579,25 +769,27 @@ struct WorkoutsView: View {
     /// Opens the add sheet (editing == nil). Present on the populated screen and the empty state so a
     /// user with no imports can still log a session.
     private var addWorkoutButton: some View {
-        NoopButton("Add workout", systemImage: "plus", kind: .secondary) {
+        NoopButton(UrjasAppearance.isRhythm ? "Add manually" : "Add workout", systemImage: "plus", kind: .secondary) {
             sheet = WorkoutSheetTarget(editing: nil)
         }
         .accessibilityLabel("Add a workout")
+        .accessibilityIdentifier("rhythm.activity.add")
     }
 
     /// #459: begin (or jump back into) a live, manually-tracked workout straight from Workouts — the
     /// place people instinctively look — instead of only from the Live screen. Starts the session and
     /// presents the in-exercise view directly (no cross-view auto-present race with LiveView's sheet).
     private var startLiveWorkoutButton: some View {
-        NoopButton(model.activeWorkout == nil ? "Start workout" : "View active workout",
+        NoopButton(model.activeWorkout == nil
+                   ? (UrjasAppearance.isRhythm ? "Start activity" : "Start workout") : "View active workout",
                    systemImage: model.activeWorkout == nil ? "figure.run" : "timer",
                    kind: .primary) {
             // No active session → pick a named sport first (#519), then the sheet's onStart begins it
             // and opens the in-exercise view. Already active → jump straight back into the live view.
-            if model.activeWorkout == nil { showStartSport = true }
-            else { showLiveWorkout = true }
+            presentWorkoutStart()
         }
         .accessibilityLabel(model.activeWorkout == nil ? "Start a workout" : "View the active workout")
+        .accessibilityIdentifier("rhythm.activity.start")
     }
 
     /// The latest session start (anchors every window — windows are relative to the
@@ -1010,12 +1202,17 @@ struct WorkoutsView: View {
     private func sessionsSection(rows: [WorkoutRow]) -> some View {
         VStack(alignment: .leading, spacing: NoopMetrics.gap) {
             HStack(alignment: .firstTextBaseline) {
-                SectionHeader("All Sessions",
-                              overline: "Log",
+                SectionHeader(UrjasAppearance.isRhythm ? "Your activity journal" : "All Sessions",
+                              overline: UrjasAppearance.isRhythm ? nil : "Log",
                               trailing: String(localized: "\(rows.count) total"))
                 selectPill(rows: rows)
             }
+            if UrjasAppearance.isRhythm { filterBar }
             if selectionMode { selectionToolbar(rows: rows) }
+            if UrjasAppearance.isRhythm && rows.isEmpty {
+                ComingSoon(what: "No matching activities. Try another sport, source, search or date range.",
+                           symbol: "magnifyingglass")
+            }
             NoopCard(padding: 0) {
                 if usesCompactSessions {
                     // #64: full-width native rows, no horizontal scroll — the iPhone list reads like the
@@ -1066,6 +1263,7 @@ struct WorkoutsView: View {
             .accessibilityLabel(selectionMode
                 ? String(localized: "Finish selecting")
                 : String(localized: "Select sessions to merge or delete"))
+            .accessibilityIdentifier("rhythm.activity.select")
         }
     }
 
@@ -1086,8 +1284,13 @@ struct WorkoutsView: View {
 
             Button(role: .destructive) {
                 let toDelete = chosen
-                selectionMode = false; selected.removeAll()
-                Task { await repo.bulkDeleteWorkouts(toDelete); await reload() }
+                if UrjasAppearance.isRhythm {
+                    pendingBulkDelete = toDelete
+                    showBulkDeleteConfirmation = true
+                } else {
+                    selectionMode = false; selected.removeAll()
+                    Task { await repo.bulkDeleteWorkouts(toDelete); await reload() }
+                }
             } label: {
                 Label(String(localized: "Delete (\(chosen.count))"), systemImage: "trash")
                     .font(StrandFont.subhead)

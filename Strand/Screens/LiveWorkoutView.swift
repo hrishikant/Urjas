@@ -27,7 +27,7 @@ struct LiveWorkoutView: View {
     /// Effort display scale (#268) — routes the live Effort read-out through the shared helper so it
     /// matches every other surface. Display-only; the captured value stays stored 0–100.
     @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale { UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm) }
 
     /// Keep the screen awake while recording (#703). Opt-in, default off; the toggle lives in Settings.
     /// Read here so we can hold the idle timer off only while this in-exercise screen is up and release it

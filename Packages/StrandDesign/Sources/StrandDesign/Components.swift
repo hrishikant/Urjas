@@ -7,9 +7,9 @@ import SwiftUI
 
 public enum NoopMetrics {
     public static let cardRadius: CGFloat = 22   // Apple x WHOOP rounded cards — matches the liquid home card (LiquidTodayView.card)   // Apple x WHOOP: rounded cards
-    public static let cardPadding: CGFloat = 16  // Apple x WHOOP: roomier card interior
+    public static var cardPadding: CGFloat { UrjasAppearance.isRhythm ? space5 : 16 }
     public static let gap: CGFloat = 12          // gap between cards
-    public static let sectionGap: CGFloat = 22   // Apple x WHOOP: breathing room (not cramped)
+    public static var sectionGap: CGFloat { UrjasAppearance.isRhythm ? space6 : 22 }
     public static let screenPadding: CGFloat = 18
     public static let tileHeight: CGFloat = 96   // Design Reset: tighter metric tile
     // Key Metrics grid: one fixed height every tile snaps to, so a sparkline-and-caption tile and a
@@ -22,6 +22,13 @@ public enum NoopMetrics {
     public static let sourceBadgeHeight: CGFloat = 18
     public static let hypnogramBandMinThickness: CGFloat = 14  // floor so short stages read as bars, not ticks
     public static let tabBarClearance: CGFloat = 76  // iOS: extra bottom scroll room so the last card clears the floating tab bar
+
+    public static let rhythmSideInset: CGFloat = 20
+    public static let rhythmTapTarget: CGFloat = 44
+    public static let rhythmLogoSize: CGFloat = 28
+    public static let rhythmAvatarSize: CGFloat = 32
+    public static let rhythmTabHeight: CGFloat = 52
+    public static let rhythmIconSize: CGFloat = 20
 
     // MARK: Standardised spacing scale (the ONE source of truth for margins)
     //
@@ -43,7 +50,7 @@ public enum NoopMetrics {
     /// Vertical gap between top-level page sections.
     public static let sectionSpacing: CGFloat = 24
     /// Interior padding inside a card's content (matches `cardPadding`).
-    public static let cardInnerPadding: CGFloat = 16
+    public static var cardInnerPadding: CGFloat { cardPadding }
     /// Vertical gap between stacked elements INSIDE a card.
     public static let cardInnerSpacing: CGFloat = 12
     /// Vertical gap between rows in a list-style card.
@@ -396,7 +403,16 @@ public struct SegmentedPillControl<T: Hashable>: View {
     }
     @ViewBuilder
     public var body: some View {
-        if adaptsToAvailableWidth {
+        if UrjasAppearance.isRhythm {
+            ViewThatFits(in: .horizontal) {
+                track(equalWidth: false)
+                    .fixedSize(horizontal: true, vertical: false)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    track(equalWidth: false)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+        } else if adaptsToAvailableWidth {
             if dynamicTypeSize > .large {
                 ScrollView(.horizontal, showsIndicators: false) {
                     track(equalWidth: false)
@@ -430,29 +446,27 @@ public struct SegmentedPillControl<T: Hashable>: View {
                         // gold-gradient pill with gold-deep ink; on light a flat blue accent pill with
                         // white ink (so the light theme's selection matches its blue chrome, not gold).
                         // Disabled segments drop to a fainter tertiary so the lock reads at a glance.
-                        .foregroundStyle(sel ? (scheme == .light ? Color.white : StrandPalette.textPrimary)
-                                             : StrandPalette.textTertiary.opacity(enabled ? 1 : 0.35))
+                        .foregroundStyle(segmentLabel(selected: sel, enabled: enabled))
                         // Fill the segment height so the selected pill has EQUAL margins to the track
                         // on every side. (The old compact pill inside a taller 44pt touch frame left
                         // more vertical margin than horizontal — it read as off-centre.)
-                        .frame(minWidth: equalWidth ? nil : 26,
+                        .frame(minWidth: equalWidth ? nil : (UrjasAppearance.isRhythm ? NoopButtonMetrics.minHitTarget : 26),
                                maxWidth: equalWidth ? .infinity : nil,
-                               maxHeight: .infinity)
+                               maxHeight: UrjasAppearance.isRhythm ? nil : .infinity)
                         .padding(.horizontal, equalWidth ? NoopMetrics.space1 : 9)
+                        .padding(.vertical, UrjasAppearance.isRhythm ? NoopMetrics.space2 : 0)
+                        .frame(minHeight: UrjasAppearance.isRhythm ? NoopButtonMetrics.minHitTarget : nil)
                         .background(
                             // WHOOP selection chrome: a flat LIGHTER-grey pill on dark (white ink), a flat
                             // blue accent pill on light — no gold, no gradient.
                             Capsule(style: .continuous)
-                                .fill(sel ? (scheme == .light
-                                             ? AnyShapeStyle(StrandPalette.accent)
-                                             : AnyShapeStyle(Color(hex: "#363B41")))
-                                          : AnyShapeStyle(Color.clear))
+                                .fill(segmentFill(selected: sel))
                         )
                         .contentShape(Capsule(style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: equalWidth ? .infinity : nil)
-                .frame(height: 32)   // segment height; the pill fills it for an even inset
+                .frame(height: UrjasAppearance.isRhythm ? nil : 32)
                 .disabled(!enabled)
                 // Announce the active range to VoiceOver and give a non-colour cue.
                 .accessibilityAddTraits(sel ? .isSelected : [])
@@ -462,6 +476,21 @@ public struct SegmentedPillControl<T: Hashable>: View {
         .frame(maxWidth: equalWidth ? .infinity : nil)
         .background(StrandPalette.surfaceInset, in: Capsule(style: .continuous))
         .overlay(Capsule(style: .continuous).strokeBorder(StrandPalette.hairline, lineWidth: 1))
+    }
+
+    private func segmentLabel(selected: Bool, enabled: Bool) -> Color {
+        if UrjasAppearance.isRhythm {
+            return (selected ? StrandPalette.rhythmRecovery : StrandPalette.textSecondary)
+                .opacity(enabled ? 1 : StrandPalette.disabledOpacity)
+        }
+        return selected ? (scheme == .light ? .white : StrandPalette.textPrimary)
+            : StrandPalette.textTertiary.opacity(enabled ? 1 : 0.35)
+    }
+
+    private func segmentFill(selected: Bool) -> Color {
+        guard selected else { return .clear }
+        if UrjasAppearance.isRhythm { return StrandPalette.surfaceRaised }
+        return scheme == .light ? StrandPalette.accent : Color(hex: "#363B41")
     }
 }
 
@@ -526,7 +555,16 @@ public extension View {
 /// Primary call-to-action: gold-gradient fill, dark gold-deep ink (700), rounded 13.
 public struct NoopPrimaryButtonStyle: ButtonStyle {
     public init() {}
+    @ViewBuilder
     public func makeBody(configuration: Configuration) -> some View {
+        if UrjasAppearance.isRhythm {
+            NoopButtonStyle(.primary, fullWidth: true).makeBody(configuration: configuration)
+        } else {
+            legacyBody(configuration: configuration)
+        }
+    }
+
+    private func legacyBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
         return configuration.label
             .font(StrandFont.body.weight(.bold))
@@ -550,7 +588,16 @@ public struct NoopPrimaryButtonStyle: ButtonStyle {
 /// Secondary: inset well + 1px white-12 border + primary text. Quieter than gold.
 public struct NoopSecondaryButtonStyle: ButtonStyle {
     public init() {}
+    @ViewBuilder
     public func makeBody(configuration: Configuration) -> some View {
+        if UrjasAppearance.isRhythm {
+            NoopButtonStyle(.secondary, fullWidth: true).makeBody(configuration: configuration)
+        } else {
+            legacyBody(configuration: configuration)
+        }
+    }
+
+    private func legacyBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
         let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
         return configuration.label
@@ -570,7 +617,16 @@ public struct NoopSecondaryButtonStyle: ButtonStyle {
 /// Ghost / gold: transparent + 1px gold@.3 hairline + gold text. Tertiary CTA.
 public struct NoopGhostButtonStyle: ButtonStyle {
     public init() {}
+    @ViewBuilder
     public func makeBody(configuration: Configuration) -> some View {
+        if UrjasAppearance.isRhythm {
+            NoopButtonStyle(.tertiary, fullWidth: true).makeBody(configuration: configuration)
+        } else {
+            legacyBody(configuration: configuration)
+        }
+    }
+
+    private func legacyBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
         let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
         return configuration.label

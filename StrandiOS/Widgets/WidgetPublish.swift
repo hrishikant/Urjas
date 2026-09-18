@@ -1,6 +1,7 @@
 #if os(iOS)
 import Foundation
 import WidgetKit
+import StrandDesign
 
 extension WidgetSnapshot {
     /// Build a glance snapshot from the live app state and publish it to the shared App Group, then
@@ -49,8 +50,9 @@ extension WidgetSnapshot {
         // app's plain `@AppStorage(UnitPrefs.effortScaleKey)` (it is not in the App Group), so we
         // pre-format the display string here and keep the 0–100 int for the ring fill (the fill
         // fraction is scale-independent: 38/100 == 8.0/21).
-        let effortScale = UnitPrefs.resolveEffortScale(
-            UserDefaults.standard.string(forKey: UnitPrefs.effortScaleKey) ?? ""
+        let effortScale = UnitPrefs.presentationEffortScale(
+            UserDefaults.standard.string(forKey: UnitPrefs.effortScaleKey) ?? "",
+            rhythm: UrjasAppearance.isRhythm
         )
         let strain = day?.strain
         let effortDisplay: String? = strain.map { stored in

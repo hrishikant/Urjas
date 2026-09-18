@@ -101,9 +101,9 @@ enum UnitPrefs {
     /// Display factor for the #268 Effort scale: the stored 0-100 value multiplied by this renders on
     /// the user's chosen axis (1.0 for the native 0-100, 0.21 for the WHOOP-style 0-21). Display-only,
     /// mirrors Android's effortDisplayFactor helper so digest sentences match the charts on both.
-    static func currentEffortDisplayFactor() -> Double {
+    static func currentEffortDisplayFactor(rhythm: Bool = false) -> Double {
         let raw = UserDefaults.standard.string(forKey: effortScaleKey) ?? ""
-        return raw == EffortScale.whoop.rawValue ? 0.21 : 1.0
+        return presentationEffortScale(raw, rhythm: rhythm) == .whoop ? 0.21 : 1.0
     }
 
     /// Whether the live-HR Live Activity (Lock Screen + Dynamic Island) may show, iOS only (#336).
@@ -125,6 +125,11 @@ enum UnitPrefs {
     /// Resolve the stored Effort-scale raw value, defaulting to Ūrjas's native 0–100 axis.
     static func resolveEffortScale(_ raw: String) -> EffortScale {
         EffortScale(rawValue: raw) ?? .hundred
+    }
+
+    /// The mobile presentation uses 0-21 without overwriting the previous interface's preference.
+    static func presentationEffortScale(_ raw: String, rhythm: Bool) -> EffortScale {
+        rhythm ? .whoop : resolveEffortScale(raw)
     }
 }
 

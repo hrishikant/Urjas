@@ -7,6 +7,15 @@ import XCTest
 /// tests exist specifically so that can't ship. Mirrors the Android UnitFormatterTest case-for-case.
 final class UnitFormatterTests: XCTestCase {
 
+    func testRhythmUsesTwentyOneWithoutChangingLegacyScaleResolution() {
+        for raw in ["", "unknown", EffortScale.hundred.rawValue, EffortScale.whoop.rawValue] {
+            XCTAssertEqual(UnitPrefs.presentationEffortScale(raw, rhythm: true), .whoop)
+            XCTAssertEqual(UnitPrefs.presentationEffortScale(raw, rhythm: false), UnitPrefs.resolveEffortScale(raw))
+        }
+        XCTAssertEqual(UnitFormatter.effortValue(100, scale: .whoop), 21, accuracy: 1e-9)
+        XCTAssertEqual(UnitPrefs.resolveEffortScale(EffortScale.hundred.rawValue), .hundred)
+    }
+
     // MARK: - Factors (the load-bearing numbers)
 
     func testDistanceFactorIsExact() {

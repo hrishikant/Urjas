@@ -35,7 +35,7 @@ public enum NoopButtonMetrics {
     /// Standard control height (48) — also the source for the min hit target floor.
     public static let height: CGFloat = NoopMetrics.controlHeight
     /// Corner radius (14) — softer than a card, not a pill.
-    public static let cornerRadius: CGFloat = 14
+    public static var cornerRadius: CGFloat { UrjasAppearance.isRhythm ? NoopMetrics.space3 : 14 }
     /// Horizontal label inset.
     public static let hPadding: CGFloat = 18
     /// Spacing between a leading icon and the label.
@@ -62,11 +62,11 @@ struct NoopButtonAppearance {
     init(_ kind: NoopButtonKind) {
         switch kind {
         case .primary:
-            fill = StrandPalette.accent
-            label = StrandPalette.goldDeepText   // designated crisp white for text on accent fills
+            fill = UrjasAppearance.isRhythm ? StrandPalette.rhythmButtonFill : StrandPalette.accent
+            label = UrjasAppearance.isRhythm ? StrandPalette.rhythmButtonText : StrandPalette.goldDeepText
             border = nil
         case .secondary:
-            fill = StrandPalette.surfaceRaised
+            fill = UrjasAppearance.isRhythm ? StrandPalette.surfaceInset : StrandPalette.surfaceRaised
             label = StrandPalette.textPrimary
             border = StrandPalette.hairline
         case .tertiary:
@@ -109,8 +109,6 @@ private struct NoopButtonBackground: View {
 public struct NoopButtonStyle: ButtonStyle {
     private let kind: NoopButtonKind
     private let fullWidth: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.isEnabled) private var isEnabled
 
     public init(_ kind: NoopButtonKind = .primary, fullWidth: Bool = false) {
         self.kind = kind
@@ -118,23 +116,37 @@ public struct NoopButtonStyle: ButtonStyle {
     }
 
     public func makeBody(configuration: Configuration) -> some View {
+        NoopButtonLabel(kind: kind, fullWidth: fullWidth, pressed: configuration.isPressed,
+                        label: configuration.label)
+    }
+}
+
+private struct NoopButtonLabel<Label: View>: View {
+    let kind: NoopButtonKind
+    let fullWidth: Bool
+    let pressed: Bool
+    let label: Label
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
         let appearance = NoopButtonAppearance(kind)
-        let pressed = configuration.isPressed
         // Reduce Motion: no scale, dim only. Otherwise subtle scale + dim.
         let scale: CGFloat = (pressed && !reduceMotion) ? NoopButtonMetrics.pressedScale : 1
         let opacity: Double = pressed ? NoopButtonMetrics.pressedOpacity : 1
 
-        configuration.label
+        label
             .labelStyle(.titleAndIcon)
             .font(StrandFont.headline.weight(.semibold))
             .tracking(NoopButtonMetrics.tracking)
-            .lineLimit(1)
+            .lineLimit(UrjasAppearance.isRhythm ? nil : 1)
             .minimumScaleFactor(0.8)
             .foregroundStyle(appearance.label)
             .frame(maxWidth: fullWidth ? .infinity : nil)
             .padding(.horizontal, NoopButtonMetrics.hPadding)
-            .frame(height: NoopButtonMetrics.height)
-            .frame(minHeight: NoopButtonMetrics.minHitTarget)
+            .padding(.vertical, UrjasAppearance.isRhythm ? NoopMetrics.space3 : 0)
+            .frame(height: UrjasAppearance.isRhythm ? nil : NoopButtonMetrics.height)
+            .frame(minHeight: NoopButtonMetrics.height)
             .contentShape(Rectangle())
             .background(NoopButtonBackground(appearance: appearance))
             .clipShape(RoundedRectangle(cornerRadius: NoopButtonMetrics.cornerRadius, style: .continuous))

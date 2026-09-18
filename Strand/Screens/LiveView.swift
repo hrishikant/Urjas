@@ -49,7 +49,7 @@ struct LiveView: View {
 
     /// Effort display scale (#268) — routes the live + saved workout Effort read-outs. Display-only.
     @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale { UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm) }
 
     private var activeConnection: Bool { live.connected && live.bonded }
 

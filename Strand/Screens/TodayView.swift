@@ -208,7 +208,7 @@ struct TodayView: View {
     @AppStorage(SceneBackgroundPrefs.enabledKey) private var showDayCycleBackground = false
     // Effort display scale (#268), drives the Effort tile's value + caption. Display-only.
     @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale { UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm) }
     // #233: the HRV window setting, read here only to explain (never recompute) an empty Charge ring
     // caused by the Deep window finding no deep-stage sleep. Same key/default SettingsView reads.
     @AppStorage(UnitPrefs.hrvWindowKey) private var hrvWindowRaw = HrvWindow.whole.rawValue

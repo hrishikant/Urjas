@@ -39,7 +39,8 @@ final class LiveActivityController {
     /// drops. Throttled to ~once every 2 s so we stay well under the Live Activity update budget.
     func update(bpm: Int?, recovery: Int?, connected: Bool, effort: Int? = nil,
                 sport: String? = nil, zone: Int? = nil,
-                distanceM: Double? = nil, speedMps: Double? = nil, startedAt: Date? = nil) {
+                distanceM: Double? = nil, speedMps: Double? = nil, startedAt: Date? = nil,
+                effortDisplay: String? = nil) {
         guard authInfo.areActivitiesEnabled else {
             note("iOS Live Activities permission OFF (Settings > Ūrjas > Live Activities)")
             return
@@ -73,7 +74,7 @@ final class LiveActivityController {
         let state = NOOPActivityAttributes.ContentState(bpm: bpm, recovery: recovery, bonded: connected,
                                                         effort: effort, sport: sport, zone: zone,
                                                         distanceM: distanceM, speedMps: speedMps,
-                                                        startedAt: startedAt)
+                                                        startedAt: startedAt, effortDisplay: effortDisplay)
         let staleDate = Date().addingTimeInterval(Self.staleAfter)
 
         if let activity {

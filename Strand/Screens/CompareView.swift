@@ -122,7 +122,7 @@ struct CompareView: View {
     // 0–21 axis; display-only, the normalized overlay shape is untouched. Every other metric is
     // scale-agnostic (see MetricDescriptor.format).
     @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale { UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm) }
 
     // Distinct, high-legibility series colors (avoid the recovery/strain ramps so
     // overlay lines read as categorical, not as a value gradient).

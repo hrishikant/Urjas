@@ -6,6 +6,18 @@ import StrandDesign
 /// natural analogue is a `TabView` with the most-used screens as tabs and everything else under a
 /// "More" list. Every screen is the same `StrandDesign`-built view the macOS app uses.
 struct RootTabView: View {
+    @AppStorage(UrjasAppearance.rhythmKey) private var rhythmEnabled = true
+
+    var body: some View {
+        if rhythmEnabled {
+            RhythmRootTabView()
+        } else {
+            LegacyRootTabView()
+        }
+    }
+}
+
+private struct LegacyRootTabView: View {
     @EnvironmentObject private var repo: Repository
     /// Cross-screen navigation requests (e.g. Live → "Manage devices"). Devices isn't a tab — it lives
     /// behind the More list — so a request presents it as a sheet, matching the quick-action screens.

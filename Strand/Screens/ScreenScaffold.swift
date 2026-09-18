@@ -1,7 +1,7 @@
 import SwiftUI
 import StrandDesign
 
-/// Standard scrollable screen container: title + dark surface + content column.
+/// Standard scrollable screen container: title, adaptive surface and content column.
 struct ScreenScaffold<Content: View, Trailing: View>: View {
     /// Optional — when nil (and no subtitle) the header is omitted entirely, so a screen can supply its
     /// own custom header in `content` (iOS Today's compact top bar).
@@ -38,6 +38,10 @@ struct ScreenScaffold<Content: View, Trailing: View>: View {
     /// non-tab screen keep their exact prior scroll behaviour.
     @Environment(\.scrollToTopSignal) private var scrollToTopSignal
     @AppStorage(SceneBackgroundPrefs.enabledKey) private var showDayCycleBackground = false
+    @AppStorage(UrjasAppearance.rhythmKey) private var rhythmEnabled = true
+
+    private var usesRhythm: Bool { rhythmEnabled && UrjasAppearance.isRhythm }
+    private var sectionSpacing: CGFloat { usesRhythm ? NoopMetrics.sectionSpacing : 20 }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -49,11 +53,10 @@ struct ScreenScaffold<Content: View, Trailing: View>: View {
             #if os(iOS)
             // Unified side margins matching the liquid home (16pt) so every page's cards + header line up
             // to the same edges (2026-07-02); macOS keeps the classic 28 in the #else branch.
-            .padding(.horizontal, 16)
-            .padding(.top, 24)
-            // The tab bar floats over the scroll content, so the last card sat hidden behind it.
-            // Reserve extra bottom scroll room so every screen's final card clears the floating bar.
-            .padding(.bottom, NoopMetrics.tabBarClearance)
+            .padding(.horizontal, usesRhythm ? NoopMetrics.screenHPadding : 16)
+            .padding(.top, NoopMetrics.space6)
+            // Rhythm's tab bar reserves its own safe-area inset; legacy still floats over content.
+            .padding(.bottom, usesRhythm ? NoopMetrics.space6 : NoopMetrics.tabBarClearance)
             // iPad: cap the readable column, then centre it in the full-width scroll viewport.
             // iPhone (.compact): the inner frame is .infinity/.leading, identical to before.
             .frame(maxWidth: hSizeClass == .regular ? 700 : .infinity,
@@ -77,7 +80,7 @@ struct ScreenScaffold<Content: View, Trailing: View>: View {
         .background(alignment: .top) {
             ZStack(alignment: .top) {
                 StrandPalette.surfaceBase
-                topBackground
+                if !usesRhythm { topBackground }
             }
             .ignoresSafeArea()
         }
@@ -103,19 +106,54 @@ struct ScreenScaffold<Content: View, Trailing: View>: View {
     /// the previous layout. `@ViewBuilder` lets the two stack types resolve to one opaque return.
     @ViewBuilder private var column: some View {
         if lazy {
-            LazyVStack(alignment: .leading, spacing: 20) {
+            LazyVStack(alignment: .leading, spacing: sectionSpacing) {
                 if title != nil || subtitle != nil { header }
                 content()
             }
         } else {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: sectionSpacing) {
                 if title != nil || subtitle != nil { header }
                 content()
             }
         }
     }
 
-    private var header: some View {
+    @ViewBuilder private var header: some View {
+        if usesRhythm {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: NoopMetrics.space3) {
+                    rhythmHeading.fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: NoopMetrics.space3)
+                    trailing().fixedSize(horizontal: true, vertical: false)
+                }
+                VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+                    rhythmHeading
+                    trailing()
+                }
+            }
+        } else {
+            legacyHeader
+        }
+    }
+
+    private var rhythmHeading: some View {
+        VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+            if let title {
+                Text(title)
+                    .font(StrandFont.title1)
+                    .foregroundStyle(StrandPalette.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            if let subtitle {
+                Text(subtitle)
+                    .font(StrandFont.subhead)
+                    .foregroundStyle(StrandPalette.textSecondary)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var legacyHeader: some View {
         // The optional sky view can render nothing when the background preference is off.
         let style = SkyHeaderStyle(hasSky: topBackground != nil && showDayCycleBackground)
         return HStack(alignment: .center, spacing: 12) {

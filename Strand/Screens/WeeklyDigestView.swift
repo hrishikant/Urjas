@@ -66,7 +66,8 @@ struct WeeklyDigestCard: View {
     @EnvironmentObject var repo: Repository
 
     var body: some View {
-        let digest = WeeklyDigestSource.digest(from: repo.days, anchorDay: Repository.localDayKey(Date()))
+        let digest = WeeklyDigestSource.digest(from: repo.days, anchorDay: Repository.localDayKey(Date()),
+                                              effortDisplayFactor: UnitPrefs.currentEffortDisplayFactor(rhythm: UrjasAppearance.isRhythm))
         if digest.isEmpty {
             EmptyView()
         } else {
@@ -98,7 +99,8 @@ struct WeeklyDigestView: View {
                     ? "A weekly digest needs a few days of history. Wear your strap or import your WHOOP export in Data Sources."
                     : "Loading your history…")
             } else {
-                let digest = WeeklyDigestSource.digest(from: repo.days, anchorDay: Repository.localDayKey(Date()))
+                let digest = WeeklyDigestSource.digest(from: repo.days, anchorDay: Repository.localDayKey(Date()),
+                                                      effortDisplayFactor: UnitPrefs.currentEffortDisplayFactor(rhythm: UrjasAppearance.isRhythm))
                 if digest.isEmpty {
                     DataPendingNote(
                         title: "No readings this week yet",
@@ -124,7 +126,7 @@ struct WeeklyDigestContent: View {
     /// The Effort display scale (#268), so the Week-in-review Effort gauge matches the Today tile
     /// and the Trends small-multiple instead of being stuck on "of 100". Charge/Rest stay 0–100.
     @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale { UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm) }
     #if os(iOS)
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #endif

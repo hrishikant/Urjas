@@ -403,7 +403,7 @@ private struct MetricRow: View {
     private var unitLabel: String {
         let system = UnitSystem(rawValue: unitSystemRaw) ?? .metric
         let temp = UnitPrefs.resolveTemperature(system: system, override: temperatureRaw)
-        let effort = UnitPrefs.resolveEffortScale(effortScaleRaw)
+        let effort = UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm)
         return metric.displayUnit(system: system, temperature: temp, effortScale: effort)
     }
 
@@ -493,7 +493,7 @@ struct MetricDetailView: View {
     private var temperatureUnit: TemperatureUnit {
         UnitPrefs.resolveTemperature(system: unitSystem, override: temperatureRaw)
     }
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale { UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm) }
     private func fmt(_ v: Double) -> String {
         metric.format(v, system: unitSystem, temperature: temperatureUnit, effortScale: effortScale)
     }

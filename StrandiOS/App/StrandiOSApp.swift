@@ -29,6 +29,7 @@ struct StrandiOSApp: App {
     @AppStorage(AppearanceMode.storageKey) private var appearanceRaw = AppearanceMode.system.rawValue
     /// Chart data-colour style (Titanium / Classic throwback). Re-colours gauges + charts.
     @AppStorage(ChartStyle.storageKey) private var chartStyleRaw = ChartStyle.titanium.rawValue
+    @AppStorage(UrjasAppearance.rhythmKey) private var rhythmDesignEnabled = true
 
     init() {
         // #1008: pin the pre-change Overnight-only default for existing installs before
@@ -110,7 +111,9 @@ struct StrandiOSApp: App {
                         zone: model.liveWorkoutZone,
                         distanceM: model.liveWorkoutDistanceM,
                         speedMps: model.liveSpeedMps,
-                        startedAt: model.liveWorkoutStartedAt
+                        startedAt: model.liveWorkoutStartedAt,
+                        effortDisplay: rhythmDesignEnabled
+                            ? day?.strain.map { UnitFormatter.effortDisplay($0, scale: .whoop) } : nil
                     )
                 }
                 // End the Live Activity the moment the link drops, even if no further HR tick arrives.
@@ -127,7 +130,9 @@ struct StrandiOSApp: App {
                         zone: model.liveWorkoutZone,
                         distanceM: model.liveWorkoutDistanceM,
                         speedMps: model.liveSpeedMps,
-                        startedAt: model.liveWorkoutStartedAt
+                        startedAt: model.liveWorkoutStartedAt,
+                        effortDisplay: rhythmDesignEnabled
+                            ? day?.strain.map { UnitFormatter.effortDisplay($0, scale: .whoop) } : nil
                     )
                 }
                 // #911/#759: republish the Home/Lock-Screen widget whenever the dashboard caches actually
@@ -150,6 +155,9 @@ struct StrandiOSApp: App {
                     // (30-minute spacing + headline-change dedup, both must pass, see WatchSessionBridge),
                     // so a refresh storm can't burn the ~50/day complication transfer budget.
                     Task { await watch.pushLatest(from: model) }
+                }
+                .onChange(of: rhythmDesignEnabled) { _, _ in
+                    Task { await WidgetSnapshot.publish(from: model) }
                 }
                 // #114: strap battery % and connection are LIVE (model.live), not repo-cache, so they never
                 // bump refreshSeq — the widget's battery would otherwise never move while the app is open

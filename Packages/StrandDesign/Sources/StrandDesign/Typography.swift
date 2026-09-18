@@ -2,10 +2,8 @@ import SwiftUI
 
 // MARK: - Strand Typography (§9.2)
 //
-// Helvetica Neue everywhere (Titanium & Gold): a precise, mechanical grotesque
-// in place of the old rounded face. Tabular/monospaced digits on every numeric
-// role so live values don't reflow. SF Mono stays for raw/log views. Overline =
-// sparing ALL-CAPS w/ wide tracking.
+// Rhythm uses the system face and semantic Dynamic Type styles. Legacy presentation
+// retains Helvetica Neue. SF Mono stays for raw/log views.
 //
 // All numeric styles use `.monospacedDigit()` so live values don't reflow.
 
@@ -21,7 +19,10 @@ public enum StrandFont {
     /// `rounded`, `number`) that live in fixed-geometry rings/tiles where unbounded growth would
     /// overflow. Prose and inline-number roles use `helveticaScaled` instead.
     private static func helvetica(_ size: CGFloat, weight: Font.Weight) -> Font {
-        .custom(family, size: size).weight(weight)
+        if UrjasAppearance.isRhythm {
+            return .system(size: size, weight: weight, design: .default)
+        }
+        return .custom(family, size: size).weight(weight)
     }
 
     /// Like `helvetica`, but the size SCALES with the user's Dynamic Type / Larger Text setting,
@@ -30,7 +31,10 @@ public enum StrandFont {
     /// through `.custom(_:size:relativeTo:)` so they scale (available on the iOS 16 / macOS 13 floor).
     private static func helveticaScaled(_ size: CGFloat, weight: Font.Weight,
                                         relativeTo style: Font.TextStyle) -> Font {
-        .custom(family, size: size, relativeTo: style).weight(weight)
+        if UrjasAppearance.isRhythm {
+            return .system(style, design: .default, weight: weight)
+        }
+        return .custom(family, size: size, relativeTo: style).weight(weight)
     }
 
     // MARK: Scale (§9.2)
@@ -38,7 +42,7 @@ public enum StrandFont {
     /// Display 64–80 / Bold — the gauge score number. Helvetica Neue 700 with tight
     /// tracking (≈ -0.04em), tabular digits so a changing value never reflows.
     public static func display(_ size: CGFloat = 72) -> Font {
-        helvetica(size, weight: .bold).monospacedDigit()
+        helvetica(size, weight: UrjasAppearance.isRhythm ? .medium : .bold).monospacedDigit()
     }
 
     /// The tight tracking for big display numbers (≈ -0.04em). Apply alongside
@@ -54,35 +58,38 @@ public enum StrandFont {
     }
 
     /// Title1 28 / Bold. Scales with Dynamic Type.
-    public static let title1 = helveticaScaled(28, weight: .bold, relativeTo: .title)
+    public static var title1: Font {
+        helveticaScaled(28, weight: UrjasAppearance.isRhythm ? .semibold : .bold, relativeTo: .title)
+    }
 
     /// Title2 22 / Semibold. Scales with Dynamic Type.
-    public static let title2 = helveticaScaled(22, weight: .semibold, relativeTo: .title2)
+    public static var title2: Font { helveticaScaled(22, weight: .semibold, relativeTo: .title2) }
 
     /// Headline 17 / Semibold. Scales with Dynamic Type.
-    public static let headline = helveticaScaled(17, weight: .semibold, relativeTo: .headline)
+    public static var headline: Font { helveticaScaled(17, weight: .semibold, relativeTo: .headline) }
 
     /// Body 15 / Regular. Scales with Dynamic Type.
-    public static let body = helveticaScaled(15, weight: .regular, relativeTo: .body)
+    public static var body: Font { helveticaScaled(15, weight: .regular, relativeTo: .body) }
 
     /// Subhead 13. Scales with Dynamic Type.
-    public static let subhead = helveticaScaled(13, weight: .regular, relativeTo: .subheadline)
+    public static var subhead: Font { helveticaScaled(13, weight: .regular, relativeTo: .subheadline) }
 
     /// Caption 12. Scales with Dynamic Type.
-    public static let caption = helveticaScaled(12, weight: .regular, relativeTo: .caption)
+    public static var caption: Font { helveticaScaled(12, weight: .regular, relativeTo: .caption) }
 
     /// Footnote 11. Scales with Dynamic Type.
-    public static let footnote = helveticaScaled(11, weight: .regular, relativeTo: .footnote)
+    public static var footnote: Font { helveticaScaled(11, weight: .regular, relativeTo: .footnote) }
 
     /// Overline 11 / Bold, +1.4 tracking (apply `.tracking(1.4)` at use site;
     /// `overlineText(_:)` does it for you). Sparing ALL-CAPS labels. Scales with Dynamic Type.
-    public static let overline = helveticaScaled(11, weight: .bold, relativeTo: .caption2)
+    public static var overline: Font {
+        helveticaScaled(11, weight: UrjasAppearance.isRhythm ? .semibold : .bold, relativeTo: .caption2)
+    }
 
-    /// `overline` at a custom point size — same Helvetica face, weight and Dynamic-Type scaling
-    /// (relativeTo `.caption2`), just smaller. Passing 11 returns exactly `.overline`. Lets a caller
-    /// shrink an ALL-CAPS label to fit a small container without losing accessibility text-scaling.
+    /// Legacy custom-size overline; Rhythm uses the semantic SF caption role so compact labels
+    /// still honor the user's text size.
     public static func overlineScaled(_ size: CGFloat) -> Font {
-        helveticaScaled(size, weight: .bold, relativeTo: .caption2)
+        helveticaScaled(size, weight: UrjasAppearance.isRhythm ? .semibold : .bold, relativeTo: .caption2)
     }
 
     /// Mono 13 (SF Mono) — raw / log views. Tabular by nature.
@@ -98,10 +105,14 @@ public enum StrandFont {
 
     /// Helvetica-Neue body number — for inline live values that should align. Scales with Dynamic
     /// Type alongside its sibling `body`/`caption` labels so a value and its label stay matched.
-    public static let bodyNumber = helveticaScaled(15, weight: .medium, relativeTo: .body).monospacedDigit()
+    public static var bodyNumber: Font {
+        helveticaScaled(15, weight: .medium, relativeTo: .body).monospacedDigit()
+    }
 
     /// Helvetica-Neue caption number — for small live values (sparklines, chips). Scales with Dynamic Type.
-    public static let captionNumber = helveticaScaled(12, weight: .medium, relativeTo: .caption).monospacedDigit()
+    public static var captionNumber: Font {
+        helveticaScaled(12, weight: .medium, relativeTo: .caption).monospacedDigit()
+    }
 
     /// Mono at an arbitrary size.
     public static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {

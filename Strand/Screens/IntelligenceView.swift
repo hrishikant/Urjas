@@ -21,7 +21,7 @@ struct IntelligenceView: View {
 
     // Effort display scale (#268) — routes every Effort value/label on this screen. Display-only.
     @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale { UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm) }
 
     var body: some View {
         // `lazy` so the trailing By-Day `ForEach` renders day cards on demand. With an 800+ day

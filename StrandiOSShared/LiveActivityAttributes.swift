@@ -13,6 +13,8 @@ public struct NOOPActivityAttributes: ActivityAttributes {
         // Effort / strain on NOOP's 0–100 axis (#446) — one more stat in the Dynamic Island expanded
         // region. OPTIONAL with a nil default so an activity started by an older build still decodes.
         public var effort: Int?
+        /// Preformatted display only; optional so activities from older builds continue decoding.
+        public var effortDisplay: String?
         // Active-workout context (#): the sport being recorded and the current HR zone (1–5), so the
         // Lock Screen / Dynamic Island reads as a workout while a session is live. Both nil when no
         // workout is recording (the activity then falls back to the plain live-HR presentation).
@@ -28,11 +30,13 @@ public struct NOOPActivityAttributes: ActivityAttributes {
 
         public init(bpm: Int?, recovery: Int?, bonded: Bool, effort: Int? = nil,
                     sport: String? = nil, zone: Int? = nil,
-                    distanceM: Double? = nil, speedMps: Double? = nil, startedAt: Date? = nil) {
+                    distanceM: Double? = nil, speedMps: Double? = nil, startedAt: Date? = nil,
+                    effortDisplay: String? = nil) {
             self.bpm = bpm
             self.recovery = recovery
             self.bonded = bonded
             self.effort = effort
+            self.effortDisplay = effortDisplay
             self.sport = sport
             self.zone = zone
             self.distanceM = distanceM

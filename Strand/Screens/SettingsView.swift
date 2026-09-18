@@ -108,6 +108,9 @@ struct SettingsView: View {
     @AppStorage("appIcon.alt") private var useNavyIcon = false
     // Light/Dark/System theme. Read by both app roots' .preferredColorScheme; default follows the OS.
     @AppStorage(AppearanceMode.storageKey) private var appearanceRaw = AppearanceMode.system.rawValue
+    #if os(iOS)
+    @AppStorage(UrjasAppearance.rhythmKey) private var rhythmDesignEnabled = true
+    #endif
     // Chart colour style: Titanium (brand) or Classic (throwback red→green). Re-colours gauges + charts.
     @AppStorage(ChartStyle.storageKey) private var chartStyleRaw = ChartStyle.titanium.rawValue
     // Day-cycle scene backdrop behind Today (#698). Default ON. Off swaps the scene for a plain dark
@@ -702,6 +705,9 @@ struct SettingsView: View {
                 // Effort scale (#268) — show Ūrjas's native 0–100 Effort or WHOOP's 0–21 Day Strain axis.
                 // Display-only; the stored value never changes, so a flip just re-labels every Effort read-out.
                 FormRow(label: "Strain scale") {
+                    if UrjasAppearance.isRhythm {
+                        Text("0-21").font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
+                    } else {
                     Picker("Strain scale", selection: $effortScaleRaw) {
                         Text("0-100").tag(EffortScale.hundred.rawValue)
                         Text("0-21").tag(EffortScale.whoop.rawValue)
@@ -710,6 +716,12 @@ struct SettingsView: View {
                     .pickerStyle(.menu)
                     .tint(StrandPalette.accent)
                     .accessibilityLabel("Strain scale")
+                    }
+                }
+                if UrjasAppearance.isRhythm {
+                    Text("The new design displays Strain on 0-21. Stored scores and your previous interface's scale preference are unchanged.")
+                        .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -766,6 +778,20 @@ struct SettingsView: View {
                     .tint(StrandPalette.accent)
                     .accessibilityLabel("Theme")
                 }
+                #if os(iOS)
+                rowDivider
+                Toggle("New mobile design", isOn: $rhythmDesignEnabled)
+                    .font(StrandFont.subhead)
+                    .toggleStyle(.switch)
+                    .tint(StrandPalette.accent)
+                    .padding(.vertical, NoopMetrics.space3)
+                    .accessibilityIdentifier("rhythm.designEnabled")
+                Text("A calmer Today, Activity, Sleep, Health and searchable More. Uses your existing data and settings. Turn this off to return to the previous interface without changing your history.")
+                    .font(StrandFont.caption)
+                    .foregroundStyle(StrandPalette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                #endif
                 rowDivider   // #79: the segmented rows sat flush against each other (missing separator)
                 FormRow(label: "Chart colours") {
                     // Default = Ūrjas's clean metric ramps; Classic = the throwback red→amber→green
@@ -826,6 +852,7 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
+                if !UrjasAppearance.isRhythm {
                 // MARK: Day-cycle background — the time-of-day scene behind Today (#698). On by default.
                 // Off swaps it for the plain dark canvas for people who find the moving scene distracting.
                 Toggle(isOn: $showDayCycleBackground) {
@@ -884,6 +911,14 @@ struct SettingsView: View {
                     .foregroundStyle(StrandPalette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text("The new design uses solid, readable cards. Your previous sky and card-transparency preferences are kept for the previous interface.")
+                        .font(StrandFont.caption)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, NoopMetrics.space3)
+                }
             }
         }
     }
@@ -1288,7 +1323,7 @@ struct SettingsView: View {
                 .tint(StrandPalette.accent)
                 .accessibilityHint("Offers to save a workout when it spots sustained elevated heart rate")
 
-                Text("After a sync, Ūrjas looks over your recent heart rate for a sustained, raised stretch that looks like exercise and offers to save it. It only ever suggests. Nothing is saved until you tap Save, and you can dismiss any suggestion. Deliberately conservative, so the odd workout may be missed. On \(Platform.deviceNounPhrase) only.")
+                Text("Enables automatic live workout starts and stops when a worn, connected band provides sustained exercise signals. After stored history syncs, Ūrjas also looks for missed sessions and keeps uncertain sports available for review. Your confirmed labels, manual workouts and imported history stay protected. Background availability still depends on the operating system.")
                     .font(StrandFont.caption)
                     .foregroundStyle(StrandPalette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1360,7 +1395,10 @@ struct SettingsView: View {
                 }
                 .toggleStyle(.switch)
                 .tint(StrandPalette.accent)
-                Text("Replaces the Today tab with the prototype redesign. Turn it off any time to return to the classic dashboard. Reads the same live data from your strap.")
+                .disabled(UrjasAppearance.isRhythm)
+                Text(UrjasAppearance.isRhythm
+                     ? "This preference is kept for the previous interface. Turn off New mobile design in Appearance to use Liquid Today or the classic dashboard."
+                     : "Replaces the Today tab with the prototype redesign. Turn it off any time to return to the classic dashboard. Reads the same live data from your strap.")
                     .font(StrandFont.caption)
                     .foregroundStyle(StrandPalette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)

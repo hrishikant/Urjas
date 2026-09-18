@@ -67,7 +67,7 @@ struct TrendsView: View {
     // Trend chart style (line vs bar) — display-only; flips every trend card between the gradient line
     // and value-ramp bars. Read here at the screen root so a Settings change re-renders on return.
     @AppStorage(UnitPrefs.trendChartStyleKey) private var trendChartStyleRaw = TrendChartStyle.line.rawValue
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale { UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm) }
 
     // yyyy-MM-dd → Date (en_US_POSIX, UTC), per task spec.
     private static let dayParser: DateFormatter = {

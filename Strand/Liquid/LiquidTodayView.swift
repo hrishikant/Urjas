@@ -10,6 +10,8 @@
 //  TodayView reads (accessors verified against TodayView.swift), and every tap
 //  routes to the same public destination. The sky is a fixed, full-bleed
 //  background (edge-to-edge under the status bar, does not scroll).
+//  Rhythm presentation shares this screen's state, loaders, preferences and destinations.
+//  Its flat iPhone layout is reversible; the original Liquid presentation remains the fallback.
 
 import SwiftUI
 import StrandDesign
@@ -26,6 +28,9 @@ struct LiquidTodayView: View {
     // only publishes connect/discovery state, never HR. Injected at the app roots beside .environmentObject(model).
     @EnvironmentObject var ble: BLEManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(UrjasAppearance.rhythmKey) private var rhythmEnabled = true
+    private var isRhythm: Bool { rhythmEnabled && UrjasAppearance.isRhythm }
     /// Low Power Mode — and the in-app "Reduce motion in Ūrjas" toggle — pose the sky still too, the
     /// behaviour the comment on the sky branch below has always described. Neither has a SwiftUI
     /// environment key, hence the shared monitor.
@@ -37,6 +42,7 @@ struct LiquidTodayView: View {
 
     // async-loaded via the confirmed Repository accessors
     @State private var restScore: Double?          // sleep_performance, day-keyed
+    @State private var restScoreDay: String?
     /// Input providers for the three scores, keyed by recovery / strain / sleep_performance.
     @State private var heroProviderByMetric: [String: ScoreInputProvider] = [:]
     @State private var stress: Double?             // StressModel(...).score, 0–3
@@ -70,6 +76,7 @@ struct LiquidTodayView: View {
     @State private var customizationDestination: TodayCustomizationDestination?
     @State private var showSettings = false
     @State private var synthesisExpanded = false
+    @State private var rhythmTrendsExpanded = false
     @State private var showLiveSession = false
 
     /// Live Sessions (silent guardian) beta gate — the SAME key the Settings toggle writes. Default ON
@@ -102,6 +109,7 @@ struct LiquidTodayView: View {
     // readiness on EVERY re-render (every HR notify, every canvas frame that invalidates, every scroll).
     // Resolve both ONCE per data/day change in load() and read the cache in body (O(1)).
     @State private var cachedDisplayDay: DailyMetric?
+    @State private var cachedDayKey: String?
     @State private var cachedReadiness: ReadinessEngine.Readiness?
     /// The recovery-INDEPENDENT prior-day vitals carry (HRV / RHR / respiratory), resolved ONCE in load()
     /// alongside cachedDisplayDay. Fixes the v8 rollover blank: after 04:00, before tonight's sleep scores,
@@ -134,7 +142,7 @@ struct LiquidTodayView: View {
     /// session-start row, the metric tiles and the `card` helper — in lockstep with the frosted cards.
     /// Content sits above the surface so it stays readable. Mirrors Kotlin `NoopPrefs.cardOpacityPercent`.
     @AppStorage(CardAppearancePrefs.opacityKey) private var cardOpacityPercent = CardAppearancePrefs.defaultPercent
-    private var cardOpacity: Double { max(0, min(1, Double(cardOpacityPercent) / 100)) }
+    private var cardOpacity: Double { isRhythm ? 1 : max(0, min(1, Double(cardOpacityPercent) / 100)) }
     /// "Sky behind cards" (default ON): extend the day-cycle sky behind the WHOLE scroll so the
     /// Card-transparency slider reveals it under every card. User-toggleable. Mirrors Kotlin `NoopPrefs.skyBehindCards`.
     @AppStorage(SkyBehindCardsPrefs.enabledKey) private var skyBehindCards = true
@@ -268,8 +276,8 @@ struct LiquidTodayView: View {
 
                 liquidRefreshIndicator   // grows in the revealed space; a vessel filling with the pull
 
-                VStack(alignment: .leading, spacing: 12) {
-                    scene
+                VStack(alignment: .leading, spacing: isRhythm ? NoopMetrics.sectionSpacing : 12) {
+                    if isRhythm { rhythmHeader } else { scene }
                     // #105: the live "workout in progress" card, dropped in the liquid Home rewrite. Restored
                     // here as the SAME leaf the classic TodayView renders (and Android's WorkoutInProgressCard),
                     // pinned above the reorderable block so an active manual workout is immediately visible
@@ -279,11 +287,12 @@ struct LiquidTodayView: View {
                     if selectedDayOffset == 0, dataLoaded { calibrationBanner }
                     // "We found a workout" confirm card: freshly auto-detected bouts from a completed sync
                     // (incl. HR-only sessions played while the app was asleep). Confirm / relabel / reject.
-                    if selectedDayOffset == 0, dataLoaded, !pendingDetected.isEmpty { detectedWorkoutsCard }
+                    if selectedDayOffset == 0, dataLoaded, !pendingDetected.isEmpty,
+                       !isRhythm || !sectionOrder.contains(.hero) { detectedWorkoutsCard }
                     // Contextual "next best action" coaching prompt (WHOOP-style). Reads today's live
                     // Charge / Strain / Stress and surfaces one gentle suggestion, tapping through to the
                     // relevant screen. Today only, and only once data has settled so it never guesses.
-                    if selectedDayOffset == 0, dataLoaded { suggestionSection }
+                    if !isRhythm, selectedDayOffset == 0, dataLoaded { suggestionSection }
                     // #today-layout (parity with Android): every Today section — the Charge/Effort/Rest hero
                     // and Start-session included — renders in the user's saved order. Reorder via the Arrange
                     // sheet (the header's up/down button; native drag rows); the order persists under the
@@ -292,12 +301,22 @@ struct LiquidTodayView: View {
                     ForEach(sectionOrder) { section in
                         switch section {
                         case .hero:
-                            VStack(spacing: 10) {
-                                heroHeadline   // one-line "what to do today" above the scores (f1)
-                                heroCard
-                                heroInsightsStrip  // per-score trend + vs-baseline + streak/affirmation (f2/f3/f5)
+                            if isRhythm {
+                                rhythmHeroSection
+                                if selectedDayOffset == 0, dataLoaded, !pendingDetected.isEmpty {
+                                    detectedWorkoutsCard
+                                }
+                            } else {
+                                VStack(spacing: 10) {
+                                    heroHeadline
+                                    heroCard
+                                    heroInsightsStrip
+                                }
                             }
-                        case .liveSession: if liveSessionsBeta { liveSessionStartRow }
+                        case .liveSession:
+                            if liveSessionsBeta {
+                                if isRhythm { rhythmSessionStart } else { liveSessionStartRow }
+                            }
                         case .synthesis: synthesisSection
                         case .keyMetrics: keyMetricsSection
                         case .workouts: lastWorkoutsSection
@@ -316,10 +335,10 @@ struct LiquidTodayView: View {
                     // Today only, matching the classic TodayView placement.
                     if selectedDayOffset == 0 { AutoWorkoutCard() }
                     dataSourcesSection
-                    Color.clear.frame(height: 90) // floating tab-bar clearance
+                    Color.clear.frame(height: isRhythm ? NoopMetrics.space4 : 90)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 30) // sit the title lower into the sky, not jammed under the status bar
+                .padding(.horizontal, isRhythm ? NoopMetrics.cardPadding : 16)
+                .padding(.top, isRhythm ? NoopMetrics.space3 : 30)
             }
             #if os(macOS)
             // Keep the phone-shaped column readable + centred on the wide mac detail pane. The sky is a
@@ -338,7 +357,7 @@ struct LiquidTodayView: View {
                 StrandPalette.surfaceBase
                 // Day-cycle scene (#698): the sky only paints when the toggle is ON; off = the plain
                 // surfaceBase canvas above (parity with Android + the classic TodayView).
-                if showDayCycleBackground {
+                if !isRhythm, showDayCycleBackground {
                     // Reduce-motion (and low-power) users get the same sky posed still — no twinkle/breath.
                     // Also static until the first data load settles, so launch isn't fighting a live sky too.
                     // "Sky behind cards" (opt-in): fill the whole backdrop with a softer settle so the sky
@@ -421,7 +440,7 @@ struct LiquidTodayView: View {
     /// visibility decision to `LiquidRefreshIndicator` below, which DOES own LiveState.
     private var liquidRefreshIndicator: some View {
         LiquidRefreshIndicator(pullY: pullY, pullThreshold: pullThreshold, refreshing: refreshing,
-                               liquidHeart: liquidHeart)
+                               liquidHeart: liquidHeart, isRhythm: isRhythm)
     }
 
     /// Arm the refresh once the pull passes the threshold; FIRE it when the finger releases (the pull
@@ -446,6 +465,281 @@ struct LiquidTodayView: View {
                 await load()
                 try? await Task.sleep(nanoseconds: 350_000_000)   // let the fill read as "done"
                 withAnimation(.easeOut(duration: 0.25)) { refreshing = false }
+            }
+        }
+    }
+
+    // MARK: - Rhythm Today
+
+    private var rhythmHeader: some View {
+        VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+            Text(dateLine)
+                .font(StrandFont.caption)
+                .foregroundStyle(StrandPalette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("rhythm.today.date")
+            Text(selectedDayOffset == 0 ? greeting : dayTitle)
+                .font(StrandFont.title1)
+                .foregroundStyle(StrandPalette.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: NoopMetrics.space2) {
+                    rhythmDayControls
+                    Spacer(minLength: 0)
+                    rhythmCustomizeButton
+                }
+                VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+                    rhythmDayControls
+                    rhythmCustomizeButton
+                }
+            }
+        }
+    }
+
+    private var rhythmCustomizeButton: some View {
+        Button { customizationDestination = .today } label: {
+            Label("Customise Today", systemImage: "slider.horizontal.3")
+                .font(StrandFont.caption.weight(.semibold))
+                .foregroundStyle(StrandPalette.rhythmRecovery)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: NoopMetrics.controlHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("rhythm.today.customize")
+    }
+
+    private var rhythmDayControls: some View {
+        HStack(spacing: 0) {
+            Button { stepDay(1) } label: {
+                Image(systemName: "chevron.left")
+                    .frame(width: NoopMetrics.controlHeight, height: NoopMetrics.controlHeight)
+                    .contentShape(Rectangle())
+            }
+            .disabled(selectedDayOffset >= earliestDayOffset)
+            .accessibilityLabel("Previous day")
+            .accessibilityIdentifier("rhythm.today.previous")
+            Button { showDayPicker = true } label: {
+                Text(dayTitle)
+                    .font(StrandFont.caption.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(minHeight: NoopMetrics.controlHeight)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("\(dayTitle). Choose a day")
+            .accessibilityIdentifier("rhythm.today.calendar")
+            .popover(isPresented: $showDayPicker) {
+                DatePicker("", selection: dayPickerBinding, in: ...Repository.logicalDay(Date()),
+                           displayedComponents: [.date])
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                    .padding(NoopMetrics.space3)
+            }
+            Button { stepDay(-1) } label: {
+                Image(systemName: "chevron.right")
+                    .frame(width: NoopMetrics.controlHeight, height: NoopMetrics.controlHeight)
+                    .contentShape(Rectangle())
+            }
+            .disabled(selectedDayOffset == 0)
+            .accessibilityLabel("Next day")
+            .accessibilityIdentifier("rhythm.today.next")
+        }
+        .font(StrandFont.caption.weight(.semibold))
+        .foregroundStyle(StrandPalette.textPrimary)
+        .buttonStyle(.plain)
+        .background(Capsule().fill(StrandPalette.surfaceRaised))
+    }
+
+    private func rhythmProvider(_ key: String) -> String? {
+        let value = key == "recovery" ? chargeDisplay.pct
+            : key == "strain" ? displayDay?.strain : restScore
+        guard value != nil else { return nil }
+        guard let provider = heroProviderByMetric[key] else { return nil }
+        return TodayView.todayScoreProviderLabel(sourceId: provider.sourceId, brand: provider.brand)
+    }
+
+    private var rhythmSleepHint: String {
+        guard restScore != nil else { return String(localized: "Score unavailable") }
+        if let day = restScoreDay, day != selectedDayKey {
+            return TodayView.carriedCaption(priorDayKey: day, todayKey: selectedDayKey)
+        }
+        return String(localized: "Sleep performance")
+    }
+
+    private var rhythmHeroSection: some View {
+        card {
+            VStack(alignment: .leading, spacing: NoopMetrics.space4) {
+                Text("Your daily balance")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(StrandPalette.textPrimary)
+                    .accessibilityIdentifier("rhythm.today.hero")
+                RhythmTodayScoreLayout {
+                    RhythmTodayScoreCell(score: .init(kind: .sleep, storedValue: restScore),
+                                         hint: rhythmSleepHint, source: rhythmProvider("sleep_performance"))
+                    RhythmTodayScoreCell(score: .init(kind: .recovery, storedValue: chargeDisplay.pct),
+                                         hint: RhythmTodayScorePresentation.recoveryHint(chargeDisplay),
+                                         source: rhythmProvider("recovery"))
+                    RhythmTodayScoreCell(score: .init(kind: .strain, storedValue: displayDay?.strain),
+                                         hint: displayDay?.strain == nil
+                                            ? String(localized: "Unavailable")
+                                            : String(localized: "Day strain"),
+                                         source: rhythmProvider("strain"))
+                }
+                .environment(\.layoutDirection, .leftToRight)
+                .padding(.vertical, NoopMetrics.space2)
+                if displayDay?.totalSleepMin != nil {
+                    Text("Time asleep · \(sleepText)")
+                        .font(StrandFont.caption)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                        .accessibilityIdentifier("rhythm.today.sleepDuration")
+                }
+                if let detail = chargeDisplay.calibrationDetail {
+                    Text(detail).font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
+                }
+                if selectedDayOffset == 0, dataLoaded {
+                    rhythmHeroTakeaway
+                    if Affirmation.showStreak(streakCurrent) {
+                        Label("\(streakCurrent) day streak", systemImage: "flame")
+                            .font(StrandFont.caption)
+                            .foregroundStyle(StrandPalette.textSecondary)
+                    }
+                    rhythmInsights
+                }
+                rhythmScoreFooter
+            }
+        }
+    }
+
+    @ViewBuilder private var rhythmHeroTakeaway: some View {
+        if readinessCall != nil || affirmationLine() != nil {
+            VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+                heroHeadline
+                if let affirmation = affirmationLine() {
+                    Label(affirmation, systemImage: "leaf")
+                        .font(StrandFont.subhead)
+                        .foregroundStyle(StrandPalette.rhythmRecovery)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(NoopMetrics.space3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: NoopMetrics.space3)
+                .fill(StrandPalette.rhythmHero))
+        }
+    }
+
+    private var rhythmInsights: some View {
+        DisclosureGroup(isExpanded: $rhythmTrendsExpanded) {
+            VStack(spacing: NoopMetrics.space3) {
+                rhythmInsight(.sleep, trend: restTrend, delta: restDelta)
+                rhythmInsight(.recovery, trend: chargeTrend, delta: chargeDelta)
+                rhythmInsight(.strain, trend: effortTrend, delta: effortDelta)
+            }
+            .padding(.top, NoopMetrics.space3)
+        } label: {
+            VStack(alignment: .leading, spacing: NoopMetrics.space1) {
+                Text("Your trends & baseline").font(StrandFont.caption.weight(.semibold))
+                if let caption = baselineCaption(chargeDelta) {
+                    Text("Recovery · \(caption.text)")
+                        .font(StrandFont.caption)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                }
+            }
+        }
+        .tint(StrandPalette.rhythmRecovery)
+        .accessibilityIdentifier("rhythm.today.trends")
+    }
+
+    private func rhythmInsight(_ kind: RhythmTodayScorePresentation.Kind, trend: [Double],
+                               delta: BaselineCompare.Delta?) -> some View {
+        VStack(alignment: .leading, spacing: NoopMetrics.space1) {
+            Text(kind.title).font(StrandFont.caption.weight(.semibold))
+            if trend.count >= 2 {
+                Sparkline(values: kind == .strain
+                          ? trend.map { UnitFormatter.effortValue($0, scale: .whoop) } : trend,
+                          gradient: Gradient(colors: [kind.tint, kind.tint]),
+                          showsArea: false, showsHead: false, showsHover: false)
+                    .frame(height: NoopMetrics.space6)
+            }
+            if let delta {
+                let caption = kind == .strain
+                    ? String(format: "%+.1f", UnitFormatter.effortValue(delta.current, scale: .whoop)
+                             - UnitFormatter.effortValue(delta.baseline, scale: .whoop))
+                    : String(format: "%+.0f", delta.diff)
+                Text("\(caption) vs your average · \(delta.sampleCount) days")
+                    .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+            } else {
+                Text("More days needed for a baseline")
+                    .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+            }
+        }
+        .foregroundStyle(StrandPalette.textPrimary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var rhythmScoreFooter: some View {
+        VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+            ForEach(["sleep_performance", "recovery", "strain"], id: \.self) { key in
+                if let source = rhythmProvider(key) {
+                    let title = key == "sleep_performance" ? String(localized: "Sleep")
+                        : key == "recovery" ? String(localized: "Recovery") : String(localized: "Strain")
+                    Text("\(title) · \(source)")
+                        .font(StrandFont.footnote)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                }
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack { rhythmScoreGuide; Spacer(minLength: NoopMetrics.space2); rhythmSourcesLink }
+                VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+                    rhythmScoreGuide
+                    rhythmSourcesLink
+                }
+            }
+        }
+    }
+
+    private var rhythmScoreGuide: some View {
+        Menu {
+            Button("Sleep") { guideSection = .rest }
+            Button("Recovery") { guideSection = .charge }
+            Button("Strain") { guideSection = .effort }
+        } label: {
+            Label("Understand your scores", systemImage: "info.circle")
+                .font(StrandFont.caption.weight(.semibold))
+                .frame(minHeight: NoopMetrics.controlHeight)
+        }
+        .foregroundStyle(StrandPalette.rhythmRecovery)
+        .accessibilityIdentifier("rhythm.today.scoreGuide")
+    }
+
+    private var rhythmSourcesLink: some View {
+        NavigationLink(value: TabRoute.dataSources) {
+            Text("Sources").font(StrandFont.caption)
+                .frame(minHeight: NoopMetrics.controlHeight)
+        }
+        .foregroundStyle(StrandPalette.textSecondary)
+    }
+
+    private var rhythmSessionStart: some View {
+        card {
+            VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+                Text("Make time for movement.")
+                    .font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
+                Text("Your quiet guardian · Beta")
+                    .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                Button { showLiveSession = true } label: {
+                    Label("Start session", systemImage: "plus")
+                        .font(StrandFont.body.weight(.semibold))
+                        .foregroundStyle(StrandPalette.rhythmButtonText)
+                        .padding(NoopMetrics.space3)
+                        .frame(maxWidth: .infinity, minHeight: NoopMetrics.controlHeight)
+                        .background(Capsule().fill(StrandPalette.rhythmButtonFill))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("rhythm.today.startSession")
+                .accessibilityHint("Opens the live session guardian. Beta. Uses today's Recovery.")
             }
         }
     }
@@ -766,7 +1060,8 @@ struct LiquidTodayView: View {
 
     private var heartRateSection: some View {
         VStack(spacing: 8) {
-            sectionHead("HEART RATE", trailing: "Live")
+            sectionHead(isRhythm ? "Heart Rate" : "HEART RATE",
+                        trailing: isRhythm && selectedDayOffset > 0 ? "Saved day" : "Live")
             // #979: the whole-day HR trend (Deep Timeline) still exists but was buried behind Metrics →
             // Show all → Deep Timeline. Make the live HR card a one-tap route into it, with a visible
             // "Full day" affordance so it's discoverable again. (This comment used to claim the Deep
@@ -778,7 +1073,9 @@ struct LiquidTodayView: View {
                         // Isolated leaf: it observes LiveState so the ~1 Hz HR notifies re-render ONLY
                         // this card, never the whole Today. Shows the current bpm live with a rolling
                         // beat-by-beat trace; falls back to today's banked 5-minute trace when idle.
-                        LiquidLiveHR(tint: liquidHeart, fallback: hrValues, animated: dataLoaded)
+                        LiquidLiveHR(tint: isRhythm ? StrandPalette.metricRose : liquidHeart,
+                                     fallback: hrValues, animated: dataLoaded,
+                                     isRhythm: isRhythm, allowLive: !isRhythm || selectedDayOffset == 0)
                         HStack(spacing: 4) {
                             Spacer()
                             Text("Full day").font(StrandFont.caption).foregroundStyle(StrandPalette.accent)
@@ -798,8 +1095,10 @@ struct LiquidTodayView: View {
     private var yourCardsSection: some View {
         VStack(spacing: 8) {
             HStack {
-                Text("YOUR CARDS").font(StrandFont.overline).tracking(1.6)
-                    .foregroundStyle(StrandPalette.textTertiary)
+                Text(isRhythm ? "Your Cards" : "YOUR CARDS")
+                    .font(isRhythm ? StrandFont.headline : StrandFont.overline)
+                    .tracking(isRhythm ? 0 : 1.6)
+                    .foregroundStyle(isRhythm ? StrandPalette.textPrimary : StrandPalette.textTertiary)
                 Spacer()
                 Button { customizationDestination = .yourCards } label: {
                     // #492 item 4 parity: unify the Your Cards / Key Metrics edit affordance to "EDIT" across
@@ -835,7 +1134,7 @@ struct LiquidTodayView: View {
                      value: unitText(fitnessAge, card.unit), tint: StrandPalette.chargeColor, frac: 0.5)
         case .vitality:
             cardLink(.metric("vitality"), title: card.title, sub: card.subtitle,
-                     value: intText(vitality), tint: liquidPurple, frac: frac(vitality))
+                     value: intText(vitality), tint: isRhythm ? StrandPalette.rhythmSleep : liquidPurple, frac: frac(vitality))
         case .hrv:
             cardLink(.metric("hrv"), title: card.title, sub: card.subtitle,
                      value: unitText(displayDay?.avgHrv, card.unit), tint: StrandPalette.metricCyan,
@@ -885,14 +1184,32 @@ struct LiquidTodayView: View {
                           value: String, tint: Color, frac: Double?) -> some View {
         NavigationLink(value: route) {
             HStack(spacing: 12) {
-                LiquidVessel(value: frac, tint: tint, animated: false).frame(width: 30, height: 30)
+                if isRhythm {
+                    Image(systemName: DashboardCard.allCases.first(where: { $0.title == title })?.icon ?? "square.grid.2x2")
+                        .font(StrandFont.body)
+                        .foregroundStyle(tint)
+                        .frame(width: NoopMetrics.space8, height: NoopMetrics.space8)
+                        .background(RoundedRectangle(cornerRadius: NoopMetrics.space2)
+                            .fill(tint.opacity(0.10)))
+                        .accessibilityHidden(true)
+                } else {
+                    LiquidVessel(value: frac, tint: tint, animated: false).frame(width: 30, height: 30)
+                }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title.uppercased()).font(StrandFont.overlineScaled(11)).tracking(1.0)
+                    Text(isRhythm ? title : title.uppercased())
+                        .font(isRhythm ? StrandFont.subhead.weight(.semibold) : StrandFont.overlineScaled(11))
+                        .tracking(isRhythm ? 0 : 1.0)
                         .foregroundStyle(StrandPalette.textPrimary)
                     Text(sub).font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
+                    if isRhythm, dynamicTypeSize.isAccessibilitySize, !value.isEmpty {
+                        Text(value).font(StrandFont.bodyNumber).foregroundStyle(StrandPalette.textPrimary)
+                    }
                 }
                 Spacer(minLength: 8)
-                Text(value).font(StrandFont.number(17)).foregroundStyle(StrandPalette.textPrimary)
+                if !isRhythm || !dynamicTypeSize.isAccessibilitySize {
+                    Text(value).font(StrandFont.number(17)).foregroundStyle(StrandPalette.textPrimary)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                }
                 Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(StrandPalette.textTertiary)
             }
@@ -990,7 +1307,47 @@ struct LiquidTodayView: View {
         return String(localized: "No cardio load yet. Strain builds once your heart rate climbs into your strain zone (around 50% of your heart-rate reserve). A calm day honestly reads near zero.")
     }
 
-    private var synthesisSection: some View {
+    @ViewBuilder private var synthesisSection: some View {
+        if isRhythm {
+            rhythmSynthesisSection
+        } else {
+            liquidSynthesisSection
+        }
+    }
+
+    private var rhythmSynthesisSection: some View {
+        VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+            card {
+                VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+                    Label("Synthesis · Your day in context", systemImage: "sparkles")
+                        .font(StrandFont.caption.weight(.semibold))
+                        .foregroundStyle(StrandPalette.rhythmRecovery)
+                    Text(chargeDisplay.calibrationDetail ?? synthLine)
+                        .font(StrandFont.title2)
+                        .foregroundStyle(StrandPalette.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(RhythmTodayScorePresentation.recoveryHint(chargeDisplay))
+                        .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                    if let note = effortZeroNote {
+                        Text(note).font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    DisclosureGroup("What informs this", isExpanded: $synthesisExpanded) {
+                        Text(LocalizedStringKey(readiness.summary))
+                            .font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, NoopMetrics.space2)
+                    }
+                    .font(StrandFont.caption)
+                    .tint(StrandPalette.rhythmRecovery)
+                    .accessibilityIdentifier("rhythm.today.synthesisDetails")
+                }
+            }
+            if selectedDayOffset == 0, dataLoaded { suggestionSection }
+        }
+    }
+
+    private var liquidSynthesisSection: some View {
         VStack(spacing: 8) {
             HStack {
                 Text(greeting).font(StrandFont.rounded(19)).foregroundStyle(StrandPalette.textPrimary)
@@ -1075,7 +1432,9 @@ struct LiquidTodayView: View {
         return card {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("RECOVERY VITALS").font(StrandFont.overline).tracking(1.6)
+                    Text(isRhythm ? "Recovery Vitals" : "RECOVERY VITALS")
+                        .font(isRhythm ? StrandFont.headline : StrandFont.overline)
+                        .tracking(isRhythm ? 0 : 1.6)
                         .foregroundStyle(StrandPalette.textSecondary)
                     Spacer()
                     if let line = vitalsProvenanceLine {
@@ -1093,12 +1452,27 @@ struct LiquidTodayView: View {
     }
 
     private func vitalRow(_ label: String, _ value: String, _ tint: Color, _ frac: Double?) -> some View {
-        HStack(spacing: 12) {
-            LiquidVessel(value: frac, tint: tint, animated: false).frame(width: 26, height: 26)
+        HStack(spacing: NoopMetrics.space3) {
+            if isRhythm {
+                Circle().fill(tint).frame(width: NoopMetrics.space2, height: NoopMetrics.space2)
+                    .accessibilityHidden(true)
+            } else {
+                LiquidVessel(value: frac, tint: tint, animated: false).frame(width: 26, height: 26)
+            }
+            if isRhythm, dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: NoopMetrics.space1) {
+                    Text(label).font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
+                    Text(value).font(StrandFont.bodyNumber).foregroundStyle(StrandPalette.textPrimary)
+                }
+                Spacer(minLength: 0)
+            } else {
             Text(label).font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
             Spacer()
             Text(value).font(StrandFont.number(15)).foregroundStyle(StrandPalette.textPrimary)
+                .fixedSize()
+            }
         }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Key metrics grid
@@ -1136,7 +1510,7 @@ struct LiquidTodayView: View {
         let rhr = (displayDay?.restingHr ?? vitalsDay?.restingHr).map(Double.init)
         return VStack(spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                sectionHead("KEY METRICS", trailing: trendWindowLabel)
+                sectionHead(isRhythm ? "Key Metrics" : "KEY METRICS", trailing: trendWindowLabel)
                 // #430 parity: the SAME editor the classic grid uses — selection + order + Detailed tiles.
                 Button { customizationDestination = .keyMetrics } label: {
                     Text(String(localized: "Edit").uppercased())
@@ -1150,7 +1524,7 @@ struct LiquidTodayView: View {
             // #430 parity: the grid honours the Key-Metrics editor (selection + order, all ten metrics)
             // instead of a hard-coded six — the bespoke Sleep-hours ktile gives way to the shared REST
             // score tile, aligning the liquid grid with the classic macOS grid and Android.
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+            LazyVGrid(columns: keyMetricColumns, spacing: NoopMetrics.space2) {
                 ForEach(enabledKeyMetrics) { metric in
                     ktileFor(metric, hrv: hrv, rhr: rhr)
                 }
@@ -1161,6 +1535,12 @@ struct LiquidTodayView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private var keyMetricColumns: [GridItem] {
+        if !isRhythm { return Array(repeating: GridItem(.flexible(), spacing: 8), count: 3) }
+        if dynamicTypeSize.isAccessibilitySize { return [GridItem(.flexible())] }
+        return [GridItem(.adaptive(minimum: NoopMetrics.keyMetricTileHeight), spacing: NoopMetrics.space2)]
     }
 
     /// One editor-selected Key-Metric tile: the metric's value/tint/fill exactly as the old hard-coded
@@ -1175,11 +1555,16 @@ struct LiquidTodayView: View {
             // hero are the same number, so a carry that reached only one of them would put two answers for
             // Charge on one screen. (#543: one prior row feeds every recovery-derived read-out.) Strain below
             // stays raw, matching the Effort hero, which correctly does not carry.
-            ktile(String(localized: "Recovery"), intText(chargeDisplay.pct), "%", StrandPalette.chargeColor, frac(chargeDisplay.pct), key: "recovery")
+            ktile(String(localized: "Recovery"), intText(chargeDisplay.pct), isRhythm ? "" : "%",
+                  isRhythm ? StrandPalette.rhythmRecovery : StrandPalette.chargeColor, frac(chargeDisplay.pct), key: "recovery")
         case .effort:
-            ktile(String(localized: "Strain"), intText(displayDay?.strain), "%", StrandPalette.effortColor, frac(displayDay?.strain), key: "strain")
+            ktile(String(localized: "Strain"),
+                  isRhythm ? RhythmTodayScorePresentation(kind: .strain, storedValue: displayDay?.strain).valueLabel : intText(displayDay?.strain),
+                  isRhythm ? "" : "%", isRhythm ? StrandPalette.rhythmStrain : StrandPalette.effortColor,
+                  frac(displayDay?.strain), key: "strain")
         case .rest:
-            ktile(String(localized: "Sleep"), intText(restScore), "%", StrandPalette.restColor, frac(restScore), key: "sleep_performance")
+            ktile(String(localized: "Sleep"), intText(restScore), isRhythm ? "" : "%",
+                  isRhythm ? StrandPalette.rhythmSleep : StrandPalette.restColor, frac(restScore), key: "sleep_performance")
         case .hrv:
             ktile("HRV", intText(hrv), "ms", StrandPalette.metricCyan, fracOver(hrv, 120), key: "hrv")
         case .restingHr:
@@ -1206,14 +1591,20 @@ struct LiquidTodayView: View {
     private func ktile(_ label: String, _ value: String, _ unit: String, _ tint: Color, _ frac: Double?,
                        key: String? = nil, detailMetric: MetricDescriptor? = nil) -> some View {
         let tile = VStack(alignment: .leading, spacing: 6) {
-            Text(label.uppercased()).font(StrandFont.overlineScaled(9)).tracking(1.2)
+            Text(isRhythm ? label : label.uppercased())
+                .font(isRhythm ? StrandFont.caption : StrandFont.overlineScaled(9))
+                .tracking(isRhythm ? 0 : 1.2)
                 .foregroundStyle(StrandPalette.textTertiary)
-            (Text(value).font(StrandFont.number(17))
+            (Text(value).font(isRhythm ? StrandFont.title2 : StrandFont.number(17))
                 + Text(unit.isEmpty ? "" : " \(unit)").font(StrandFont.caption))
                 .foregroundStyle(StrandPalette.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            LiquidTube(frac: frac ?? 0, tint: tint, height: 8, animated: false)
+            if isRhythm {
+                RhythmTodayProgressBar(fraction: frac, tint: tint)
+            } else {
+                LiquidTube(frac: frac ?? 0, tint: tint, height: 8, animated: false)
+            }
             // #430 parity: DETAILED tiles grow the trend graph under the bar, tinted to the metric and
             // windowed to the editor's 2-day / 1-week / 2-week choice (the Android twin). A metric with no
             // windowed series keeps a clear placeholder of the same height so every tile in a detailed row
@@ -1257,7 +1648,74 @@ struct LiquidTodayView: View {
 
     // MARK: - Last workouts
 
-    private var lastWorkoutsSection: some View {
+    @ViewBuilder private var lastWorkoutsSection: some View {
+        if isRhythm {
+            rhythmDayActivity
+        } else {
+            liquidLastWorkoutsSection
+        }
+    }
+
+    private var rhythmDayActivity: some View {
+        let dayWorkouts = workouts.filter {
+            Repository.logicalDayKey(Date(timeIntervalSince1970: TimeInterval($0.startTs))) == selectedDayKey
+        }
+        return card {
+            VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+                Text(selectedDayOffset == 0 ? "Your day, so far" : "Your day")
+                    .font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
+                if displayDay?.totalSleepMin != nil {
+                    NavigationLink(value: TabRoute.sleep) {
+                        HStack(spacing: NoopMetrics.space3) {
+                            Image(systemName: "moon")
+                                .foregroundStyle(StrandPalette.rhythmSleep)
+                            VStack(alignment: .leading, spacing: NoopMetrics.space1) {
+                                Text("Time asleep").font(StrandFont.subhead.weight(.semibold))
+                                Text(sleepText).font(StrandFont.bodyNumber)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(StrandFont.caption)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                ForEach(dayWorkouts.prefix(3), id: \.startTs) { workout in
+                    NavigationLink(value: TabRoute.workouts) {
+                        VStack(alignment: .leading, spacing: NoopMetrics.space1) {
+                            HStack {
+                                Text(WorkoutSource.displaySport(workout.sport))
+                                    .font(StrandFont.subhead.weight(.semibold))
+                                Spacer(minLength: NoopMetrics.space2)
+                                Image(systemName: "chevron.right").font(StrandFont.caption)
+                            }
+                            Text("\(detectedTimeText(workout)) · \(workoutSub(workout))")
+                                .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                            if let strain = workout.strain {
+                                Text("Strain \(UnitFormatter.effortDisplay(strain, scale: .whoop))")
+                                    .font(StrandFont.caption).foregroundStyle(StrandPalette.rhythmStrain)
+                            }
+                        }
+                        .padding(.vertical, NoopMetrics.space2)
+                    }
+                    .buttonStyle(.plain)
+                }
+                if dayWorkouts.isEmpty {
+                    Text("No saved workouts for this day")
+                        .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                }
+                NavigationLink(value: TabRoute.workouts) {
+                    Label("All workouts", systemImage: "arrow.right")
+                        .font(StrandFont.caption.weight(.semibold))
+                        .foregroundStyle(StrandPalette.rhythmRecovery)
+                        .frame(minHeight: NoopMetrics.controlHeight)
+                }
+                .buttonStyle(.plain)
+            }
+            .foregroundStyle(StrandPalette.textPrimary)
+        }
+    }
+
+    private var liquidLastWorkoutsSection: some View {
         VStack(spacing: 8) {
             sectionHead("LAST WORKOUTS", trailing: "\(workouts.count) total")
             if let w = workouts.first {
@@ -1297,7 +1755,7 @@ struct LiquidTodayView: View {
 
     private var dataSourcesSection: some View {
         VStack(spacing: 8) {
-            sectionHead("DATA SOURCES", trailing: "Provenance")
+            sectionHead(isRhythm ? "Data Sources" : "DATA SOURCES", trailing: "Provenance")
             NavigationLink(value: TabRoute.dataSources) {
                 card {
                     VStack(spacing: 12) {
@@ -1322,10 +1780,16 @@ struct LiquidTodayView: View {
     // MARK: - Reusable chrome
 
     private func sectionHead(_ title: String, trailing: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(LocalizedStringKey(title)).font(StrandFont.overline).tracking(1.6).foregroundStyle(StrandPalette.textTertiary)
-            Spacer()
-            Text(LocalizedStringKey(trailing)).font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
+        let layout = isRhythm && dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: NoopMetrics.space1))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+        return layout {
+            Text(LocalizedStringKey(title))
+                .font(isRhythm ? StrandFont.headline : StrandFont.overline)
+                .tracking(isRhythm ? 0 : 1.6)
+                .foregroundStyle(isRhythm ? StrandPalette.textPrimary : StrandPalette.textTertiary)
+            if !isRhythm || !dynamicTypeSize.isAccessibilitySize { Spacer() }
+            Text(LocalizedStringKey(trailing)).font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
         }
         .padding(.horizontal, 2)
         .padding(.top, 4)
@@ -1333,7 +1797,7 @@ struct LiquidTodayView: View {
 
     private func card<V: View>(@ViewBuilder _ content: () -> V) -> some View {
         content()
-            .padding(16)
+            .padding(isRhythm ? NoopMetrics.cardInnerPadding : 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -1347,6 +1811,17 @@ struct LiquidTodayView: View {
     // MARK: - Data
 
     private func load() async {
+        let selectedDayKey = self.selectedDayKey
+        let selectedDayOffset = self.selectedDayOffset
+        let selectedLogicalDay = self.selectedLogicalDay
+        guard loadIsCurrent(dayKey: selectedDayKey, offset: selectedDayOffset) else { return }
+        if isRhythm, cachedDayKey != selectedDayKey {
+            // A date change must not briefly pair the next day's Recovery with the previous day's Sleep.
+            restScore = nil; restScoreDay = nil; heroProviderByMetric = [:]
+            stepsEst = nil; importedStepsDay = nil; importedActiveKcalDay = nil
+            hrValues = []; kSparks = [:]; dataLoaded = false
+        }
+        cachedDayKey = selectedDayKey
         // Resolve the O(days) lookups ONCE here (not on every body re-render): the selected day and the
         // readiness verdict. Both scan repo.days (up to 599 rows); doing it per-render was the stutter.
         let day = resolveDisplayDay()
@@ -1402,11 +1877,10 @@ struct LiquidTodayView: View {
                                                       from: sourceFromDay, to: sourceDayKey)
         async let effortSourceA = repo.resolvedSeries(key: "strain", source: Repository.whoopSource,
                                                       from: sourceDayKey, to: sourceDayKey)
-        async let restSourceA = repo.resolvedSeries(key: "sleep_performance", source: Repository.whoopSource,
-                                                    from: sourceDayKey, to: sourceDayKey)
 
         let restSeries = await restA
         let stepsSeries = await stepsA
+        guard loadIsCurrent(dayKey: selectedDayKey, offset: selectedDayOffset) else { return }
         let restByDay = Dictionary(restSeries.map { ($0.day, $0.value) }, uniquingKeysWith: { _, last in last })
         // Selected day's Rest; tail fallback only at offset 0 (a past day with no row shows nothing) AND
         // only when the tail night is still fresh. #977: a live 5.0 whose sleep never scores (no overnight
@@ -1417,9 +1891,14 @@ struct LiquidTodayView: View {
             todayValue: restByDay[selectedDayKey], lastDay: restSeries.last?.day,
             lastValue: restSeries.last?.value, isTodaySelected: selectedDayOffset == 0,
             todayKey: selectedDayKey)
+        restScoreDay = restScore == nil ? nil
+            : restByDay[selectedDayKey] != nil ? selectedDayKey : restSeries.last?.day
+        async let restSourceA = repo.resolvedSeries(key: "sleep_performance", source: Repository.whoopSource,
+                                                    from: min(sourceDayKey, restScoreDay ?? sourceDayKey), to: sourceDayKey)
         // StressModel loops the full history to build its baseline — run it OFF the main actor so a big
         // history doesn't stutter the UI. Snapshot the inputs (value types) into the detached task.
         let storedStress = await stressA
+        guard loadIsCurrent(dayKey: selectedDayKey, offset: selectedDayOffset) else { return }
         let daysSnapshot = repo.days
 
         // #430 parity: the day-keyed series the DETAILED Key-Metrics tiles graph — a trailing CALENDAR
@@ -1435,6 +1914,7 @@ struct LiquidTodayView: View {
         // matching the imported-first VALUE. Union of imported days + strap-row days. Mirrors Android's
         // caloriesSpark (windowed caloriesByDay).
         let appleRowsForSpark = await appleA
+        guard loadIsCurrent(dayKey: selectedDayKey, offset: selectedDayOffset) else { return }
         var winImportedKcal: [String: Double] = [:]
         for r in appleRowsForSpark where r.day >= sparkCutoff && r.day <= selectedDayKey {
             if let k = r.activeKcal { winImportedKcal[r.day] = max(winImportedKcal[r.day] ?? 0, k) }
@@ -1490,11 +1970,17 @@ struct LiquidTodayView: View {
             readinessCall = nil; chargeDelta = nil; effortDelta = nil; restDelta = nil
             chargeTrend = []; effortTrend = []; restTrend = []; streakCurrent = 0; calibration = nil
         }
-        stress = await Task.detached(priority: .utility) {
+        let loadedStress = await Task.detached(priority: .utility) {
             StressModel(days: daysSnapshot, stored: storedStress)?.score
         }.value
-        fitnessAge = (await fitA).last?.value   // history-wide latest banked (not day-scoped)
-        vitality = (await vitA).last?.value
+        let loadedFitness = (await fitA).last?.value
+        let loadedVitality = (await vitA).last?.value
+        let loadedHR = await hrA
+        let loadedWorkouts = await wkA
+        guard loadIsCurrent(dayKey: selectedDayKey, offset: selectedDayOffset) else { return }
+        stress = loadedStress
+        fitnessAge = loadedFitness   // history-wide latest banked (not day-scoped)
+        vitality = loadedVitality
         // Steps is a DAILY metric, so key it to the SELECTED day (like restScore above), not the history-wide
         // latest. Without this, swiping to a past day with no strap step count showed today's estimate (the
         // `.last` value) instead of that day's. Mirrors the classic Today's stepsEstByDay[selectedDayKey].
@@ -1503,14 +1989,15 @@ struct LiquidTodayView: View {
         // Imported Apple Health steps for the SELECTED day (max across rows), the middle tier between the
         // measured strap count and the motion estimate. Health Connect is Android-only, so apple-health is
         // the sole import source on iOS. Mirrors Android `stepsForDay` (#377).
-        importedStepsDay = (await appleA).filter { $0.day == selectedDayKey }.compactMap { $0.steps }.max()
+        importedStepsDay = appleRowsForSpark.filter { $0.day == selectedDayKey }.compactMap { $0.steps }.max()
         // #616: same-day imported active energy — the calorie fallback when the strap banked no on-device
         // HR estimate for the day, so the tile/card/detail agree (imported-first, mirrors steps).
-        importedActiveKcalDay = (await appleA).filter { $0.day == selectedDayKey }.compactMap { $0.activeKcal }.max()
-        hrValues = (await hrA).map { $0.bpm }
-        workouts = await wkA
+        importedActiveKcalDay = appleRowsForSpark.filter { $0.day == selectedDayKey }.compactMap { $0.activeKcal }.max()
+        hrValues = loadedHR.map { $0.bpm }
+        workouts = loadedWorkouts
 
         let (chargeSource, effortSource, restSource) = await (chargeSourceA, effortSourceA, restSourceA)
+        guard loadIsCurrent(dayKey: selectedDayKey, offset: selectedDayOffset) else { return }
         let sourceResolutions = [
             ("recovery", chargeSource),
             ("strain", effortSource),
@@ -1519,10 +2006,10 @@ struct LiquidTodayView: View {
         var providers: [String: ScoreInputProvider] = [:]
         for (metric, resolution) in sourceResolutions {
             let selectedPoint = resolution.points.last(where: { $0.day == sourceDayKey })
+            let carriedKey = metric == "recovery" ? priorScored?.day
+                : metric == "sleep_performance" ? restScoreDay : nil
             let winner = selectedPoint
-                ?? (metric == "recovery"
-                    ? priorScored.flatMap { prior in resolution.points.last(where: { $0.day == prior.day }) }
-                    : nil)
+                ?? carriedKey.flatMap { key in resolution.points.last(where: { $0.day == key }) }
             if let winner {
                 providers[metric] = await repo.scoreInputProvider(
                     resolvedSource: winner.source,
@@ -1531,11 +2018,16 @@ struct LiquidTodayView: View {
                 )
             }
         }
+        guard loadIsCurrent(dayKey: selectedDayKey, offset: selectedDayOffset) else { return }
         heroProviderByMetric = providers
 
         // First load done — bring the hero gauges + sky to life now the launch churn has settled.
         if !dataLoaded { withAnimation(.easeIn(duration: 0.4)) { dataLoaded = true } }
         await loadPendingDetected()
+    }
+
+    private func loadIsCurrent(dayKey: String, offset: Int) -> Bool {
+        !Task.isCancelled && dayKey == selectedDayKey && offset == selectedDayOffset
     }
 
     // MARK: - "We found a workout" confirm card (#retro-detect)
@@ -1584,6 +2076,15 @@ struct LiquidTodayView: View {
 
     @ViewBuilder private var detectedWorkoutsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if isRhythm {
+                Label("From your last sync", systemImage: "sparkles")
+                    .font(StrandFont.caption.weight(.semibold))
+                    .foregroundStyle(StrandPalette.rhythmRecovery)
+                Text("Found while the app was away. Confirm the activity or give it the right sport.")
+                    .font(StrandFont.caption)
+                    .foregroundStyle(StrandPalette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: 8) {
                 Image(systemName: "figure.run.circle.fill")
                     .font(.system(size: 18, weight: .semibold))
@@ -1593,17 +2094,74 @@ struct LiquidTodayView: View {
                     .foregroundStyle(StrandPalette.textPrimary)
                 Spacer(minLength: 0)
             }
-            ForEach(pendingDetected.prefix(3), id: \.startTs) { row in
-                detectedRow(row)
+            ForEach(isRhythm ? pendingDetected : Array(pendingDetected.prefix(3)), id: \.startTs) { row in
+                if isRhythm { rhythmDetectedRow(row) } else { detectedRow(row) }
             }
         }
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(StrandPalette.surfaceRaised.opacity(0.6))
+                .fill(isRhythm ? StrandPalette.surfaceRaised : StrandPalette.surfaceRaised.opacity(0.6))
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(StrandPalette.effortColor.opacity(0.3), lineWidth: 1))
         )
+        .accessibilityIdentifier(isRhythm ? "rhythm.today.pendingWorkouts" : "liquid.today.pendingWorkouts")
+    }
+
+    private func rhythmDetectedRow(_ row: WorkoutRow) -> some View {
+        VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+            Text(WorkoutSource.displaySport(row.sport))
+                .font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
+            Text("\(detectedTimeText(row)) · \(detectedDurationText(row))")
+                .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+            if let stats = detectedStatsText(row) {
+                Text(stats).font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+            }
+            Button { detectedSportSelection = DetectedSportSelection(row: row) } label: {
+                Label("Review activity", systemImage: "arrow.right")
+                    .font(StrandFont.subhead.weight(.semibold))
+                    .foregroundStyle(StrandPalette.rhythmButtonText)
+                    .padding(NoopMetrics.space3)
+                    .frame(maxWidth: .infinity, minHeight: NoopMetrics.controlHeight)
+                    .background(Capsule().fill(StrandPalette.rhythmButtonFill))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("rhythm.workout.review.\(row.startTs)")
+            .accessibilityHint("Choose from all sports, including Badminton, then confirm this workout.")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: NoopMetrics.space4) {
+                    rhythmConfirmButton(row)
+                    Spacer(minLength: 0)
+                    rhythmDiscardButton(row)
+                }
+                VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+                    rhythmConfirmButton(row)
+                    rhythmDiscardButton(row)
+                }
+            }
+        }
+        .padding(.vertical, NoopMetrics.space2)
+    }
+
+    private func rhythmConfirmButton(_ row: WorkoutRow) -> some View {
+        Button { confirmDetected(row) } label: {
+            Text("Confirm as shown")
+                .font(StrandFont.caption.weight(.semibold))
+                .foregroundStyle(StrandPalette.rhythmRecovery)
+                .frame(minHeight: NoopMetrics.controlHeight)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("rhythm.workout.confirm.\(row.startTs)")
+    }
+
+    private func rhythmDiscardButton(_ row: WorkoutRow) -> some View {
+        Button { rejectDetected(row) } label: {
+            Text("Not a workout").font(StrandFont.caption)
+                .foregroundStyle(StrandPalette.textSecondary)
+                .frame(minHeight: NoopMetrics.controlHeight)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("rhythm.workout.discard.\(row.startTs)")
     }
 
     @ViewBuilder private func detectedRow(_ row: WorkoutRow) -> some View {
@@ -1664,6 +2222,10 @@ struct LiquidTodayView: View {
     }
 
     private func detectedTimeText(_ row: WorkoutRow) -> String {
+        if isRhythm {
+            return Date(timeIntervalSince1970: TimeInterval(row.startTs))
+                .formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        }
         let f = DateFormatter(); f.dateFormat = "h:mm a"
         return f.string(from: Date(timeIntervalSince1970: TimeInterval(row.startTs)))
     }
@@ -1672,7 +2234,11 @@ struct LiquidTodayView: View {
         var parts: [String] = []
         if let avg = row.avgHr, avg > 0 { parts.append("avg \(avg) bpm") }
         if let mx = row.maxHr, mx > 0 { parts.append("peak \(mx) bpm") }
-        if let s = row.strain, s > 0 { parts.append(String(format: "strain %.1f", s)) }
+        if let s = row.strain, s > 0 {
+            parts.append(isRhythm
+                         ? String(localized: "strain \(UnitFormatter.effortDisplay(s, scale: .whoop))")
+                         : String(format: "strain %.1f", s))
+        }
         if let kcal = row.energyKcal, kcal > 0 { parts.append("\(Int(kcal)) kcal") }
         return parts.isEmpty ? nil : parts.joined(separator: "  \u{2022}  ")
     }
@@ -1808,7 +2374,9 @@ struct LiquidTodayView: View {
     // The user's Effort display scale (#268), 0–100 by default or the WHOOP 0–21 axis if chosen — the SAME
     // preference the Workouts screen + Trends read, so a workout's Effort number is identical everywhere.
     @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
-    private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
+    private var effortScale: EffortScale {
+        UnitPrefs.presentationEffortScale(effortScaleRaw, rhythm: UrjasAppearance.isRhythm)
+    }
 
     private func effortText(_ s: Double?) -> String {
         guard let s else { return "–" }
@@ -2012,6 +2580,7 @@ private struct LiquidRefreshIndicator: View {
     let pullThreshold: CGFloat
     let refreshing: Bool
     let liquidHeart: Color
+    var isRhythm = false
 
     @EnvironmentObject private var live: LiveState
 
@@ -2034,17 +2603,29 @@ private struct LiquidRefreshIndicator: View {
         ZStack {
             if syncing {
                 VStack(spacing: 6) {
-                    LiquidVessel(value: 0.6, tint: liquidHeart, animated: true)
-                        .frame(width: 34, height: 34)
+                    if isRhythm {
+                        ProgressView().tint(StrandPalette.rhythmRecovery)
+                    } else {
+                        LiquidVessel(value: 0.6, tint: liquidHeart, animated: true)
+                            .frame(width: 34, height: 34)
+                    }
                     Text("Syncing…")
                         .font(StrandFont.caption)
                         .foregroundStyle(StrandPalette.textSecondary)
                 }
             } else if pullY > 2 {
-                LiquidVessel(value: progress, tint: liquidHeart, animated: false)
-                    .frame(width: 30, height: 30)
-                    .opacity(progress)
-                    .scaleEffect(0.7 + 0.3 * progress)
+                if isRhythm {
+                    Image(systemName: progress >= 1 ? "arrow.up" : "arrow.down")
+                        .font(StrandFont.body)
+                        .foregroundStyle(StrandPalette.rhythmRecovery)
+                        .opacity(progress)
+                        .accessibilityLabel(progress >= 1 ? "Release to sync" : "Pull to sync")
+                } else {
+                    LiquidVessel(value: progress, tint: liquidHeart, animated: false)
+                        .frame(width: 30, height: 30)
+                        .opacity(progress)
+                        .scaleEffect(0.7 + 0.3 * progress)
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -2063,6 +2644,7 @@ private struct LiquidRefreshIndicator: View {
                 }
             }
         }
+        .onDisappear { hideTask?.cancel() }
     }
 }
 
@@ -2090,40 +2672,48 @@ private struct LiquidLiveHR: View {
     var tint: Color
     var fallback: [Double]        // today's banked 5-minute buckets — shown when there's no live stream
     var animated: Bool
+    var isRhythm = false
+    var allowLive = true
 
     @EnvironmentObject private var live: LiveState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var samples: [Double] = []
     @State private var beat = false
     private let maxSamples = 90   // ~1.5 min of 1 Hz live HR, enough to read the shape
 
-    private var isLive: Bool { live.connected && samples.count >= 2 }
+    private var isLive: Bool { allowLive && live.connected && samples.count >= 2 }
     private var series: [Double] { isLive ? samples : fallback }
     private var bigBpm: Int? {
-        if let hr = live.heartRate, hr > 0, live.connected { return hr }
+        if allowLive, let hr = live.heartRate, hr > 0, live.connected { return hr }
         if let last = fallback.last { return Int(last.rounded()) }
         return nil
     }
     private var subtitle: String {
+        if !allowLive { return String(localized: "Saved day · 5-minute averages") }
         if isLive { return String(localized: "Live · beat by beat") }
         if fallback.count >= 2 { return String(localized: "5-minute average · since midnight") }
         return live.connected ? String(localized: "Waiting for the strap") : String(localized: "Strap not connected")
     }
 
     var body: some View {
+        let headerLayout = isRhythm && dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: NoopMetrics.space2))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            headerLayout {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("BEATS PER MINUTE").font(StrandFont.overline).tracking(1.6)
                         .foregroundStyle(StrandPalette.textSecondary)
                     Text(subtitle).font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
                 }
-                Spacer()
+                if !isRhythm || !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 if isLive {
                     // A gentle heartbeat dot that pulses with each incoming sample.
                     Circle().fill(tint).frame(width: 7, height: 7)
-                        .scaleEffect(beat ? 1.35 : 0.85)
-                        .opacity(beat ? 1 : 0.45)
-                        .animation(.easeOut(duration: 0.28), value: beat)
+                        .scaleEffect(isRhythm || reduceMotion ? 1 : beat ? 1.35 : 0.85)
+                        .opacity(isRhythm || reduceMotion ? 1 : beat ? 1 : 0.45)
+                        .animation(isRhythm || reduceMotion ? nil : .easeOut(duration: 0.28), value: beat)
                         .padding(.trailing, 2)
                 }
                 if let hr = bigBpm {
@@ -2135,7 +2725,14 @@ private struct LiquidLiveHR: View {
                 }
             }
             if series.count >= 2 {
-                LiquidThread(bpm: series, tint: tint, height: 92, animated: animated)
+                if isRhythm {
+                    Sparkline(values: series, gradient: Gradient(colors: [tint, tint]),
+                              showsArea: false, showsHead: false, showsHover: false)
+                        .frame(height: NoopMetrics.tileHeight)
+                        .accessibilityLabel(isLive ? "Live heart-rate trend" : "Saved heart-rate trend")
+                } else {
+                    LiquidThread(bpm: series, tint: tint, height: 92, animated: animated)
+                }
                 HStack {
                     stat(String(localized: "Min"), series.min())
                     Spacer()
@@ -2144,24 +2741,32 @@ private struct LiquidLiveHR: View {
                     stat(String(localized: "Max"), series.max())
                 }
             } else {
-                Text(live.connected ? "Waiting for a live heartbeat…" : "Connect your strap to see live heart rate")
+                Text(!allowLive ? "No heart-rate samples for this day"
+                     : live.connected ? "Waiting for a live heartbeat…" : "Connect your strap to see live heart rate")
                     .font(StrandFont.caption)
                     .foregroundStyle(StrandPalette.textTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 24)
             }
         }
-        .onAppear { if samples.isEmpty, let hr = live.heartRate, hr > 0 { samples = [Double(hr)] } }
+        .onAppear { if allowLive, samples.isEmpty, let hr = live.heartRate, hr > 0 { samples = [Double(hr)] } }
         .onChangeCompat(of: live.heartRate) { hr in
-            guard let hr, hr > 0 else { return }
+            guard allowLive, let hr, hr > 0 else { return }
             samples.append(Double(hr))
             if samples.count > maxSamples { samples.removeFirst(samples.count - maxSamples) }
             beat.toggle()
         }
+        .onChangeCompat(of: allowLive) { _ in if isRhythm { samples = [] } }
+        .onChangeCompat(of: live.connected) { connected in
+            if isRhythm, !connected { samples = [] }
+        }
     }
 
     private func stat(_ label: String, _ v: Double?) -> some View {
-        HStack(spacing: 5) {
+        let layout = isRhythm && dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: NoopMetrics.space1))
+            : AnyLayout(HStackLayout(spacing: 5))
+        return layout {
             Text(label).font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
             Text(v.map { String(Int($0.rounded())) } ?? "–")
                 .font(StrandFont.captionNumber).foregroundStyle(StrandPalette.textSecondary)

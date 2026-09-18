@@ -27,6 +27,7 @@ enum TabRoute: Hashable {
     /// declared first, so a card's tap-through would silently depend on declaration order. This pins
     /// the exact source, so the catalog's ordering can never decide where a card taps through.
     case metricSourced(key: String, source: String)
+    case metricDetail(MetricDescriptor)
     case metricExplorer
     case workouts
     case dataSources
@@ -41,10 +42,12 @@ extension View {
     /// Maps every `TabRoute` push to its screen. Apply once to the ROOT content of each
     /// `NavigationStack` that hosts a tab-root view (the iOS tab shell's stacks; the macOS
     /// Today detail pane and TrendsView's own macOS wrap).
-    func tabRouteDestinations() -> some View {
+    func tabRouteDestinations(showNavigationBar: Bool = false) -> some View {
         navigationDestination(for: TabRoute.self) { route in
+            Group {
             switch route {
             case .fullDayChart: FullDayChartView()
+            case .metricDetail(let metric): MetricDetailView(metric: metric)
             case .metric(let key):
                 // Every caller passes a catalog key, so the fallback is theoretical; Health is the
                 // catch-all vitals surface. (Pre-#198 Trends fell back to the Explorer instead —
@@ -72,6 +75,24 @@ extension View {
             case .hydration: HydrationView()
             case .coupled: CoupledView()
             }
+            }
+            .modifier(TabRouteNavigationChrome(visible: showNavigationBar))
         }
+    }
+}
+
+private struct TabRouteNavigationChrome: ViewModifier {
+    let visible: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        #if os(iOS)
+        if visible {
+            content.toolbar(.visible, for: .navigationBar).navigationBarTitleDisplayMode(.inline)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
     }
 }

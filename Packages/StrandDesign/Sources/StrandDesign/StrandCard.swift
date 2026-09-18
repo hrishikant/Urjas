@@ -42,6 +42,16 @@ public struct FrostedCardSurface: View {
 
     public var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        if UrjasAppearance.isRhythm {
+            shape
+                .fill(StrandPalette.surfaceRaised)
+                .overlay(shape.strokeBorder(StrandPalette.hairline, lineWidth: 1))
+        } else {
+            legacySurface(shape)
+        }
+    }
+
+    private func legacySurface(_ shape: RoundedRectangle) -> some View {
         let op = max(0.0, min(1.0, Double(cardOpacityPercent) / 100.0))
         // Base fill: tinted cards deepen into the 150° navy bevel (#15243C → #0B1424,
         // = surfaceOverlay → cardFillBottom); neutral cards sit on the flat raised
@@ -50,7 +60,7 @@ public struct FrostedCardSurface: View {
         // neutral cards now share the same flat surface; tint identity is carried by the softened
         // hue wash + the tinted hairline below, not a gradient, so cards stay familiar but flatten.
         let baseFill = AnyShapeStyle(StrandPalette.surfaceRaised)
-        shape
+        return shape
             .fill(baseFill)
             .overlay(
                 // A faint per-domain hue wash — only on tinted cards; neutral stays flat.
@@ -96,7 +106,7 @@ public struct StrandCard<Content: View>: View {
     @ViewBuilder public var content: () -> Content
 
     public init(
-        padding: CGFloat = 16,
+        padding: CGFloat = NoopMetrics.cardPadding,
         cornerRadius: CGFloat = 22,
         tint: Color? = nil,
         @ViewBuilder content: @escaping () -> Content
@@ -141,13 +151,13 @@ public struct StrandCardHover: ViewModifier {
             // Incremental hover lift on top of the surface's resting elevation: a warm soft shadow on
             // light (the white card lifts off the paper), the signature black on dark.
             .shadow(
-                color: hovering ? (scheme == .light ? Color(hex: "#1A2230").opacity(0.16)
+                color: hovering && !UrjasAppearance.isRhythm ? (scheme == .light ? Color(hex: "#1A2230").opacity(0.16)
                                                      : Color.black.opacity(0.45)) : .clear,
                 radius: hovering ? (scheme == .light ? 14 : 16) : 0,
                 x: 0,
                 y: hovering ? (scheme == .light ? 6 : 10) : 0
             )
-            .offset(y: hovering ? -1 : 0)
+            .offset(y: hovering && !UrjasAppearance.isRhythm ? -1 : 0)
             .animation(StrandMotion.interactive, value: hovering)
             // .onHover is unavailable on watchOS (no pointer); the watch never hovers a card.
             #if !os(watchOS)

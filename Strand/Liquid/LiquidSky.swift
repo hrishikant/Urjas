@@ -9,7 +9,13 @@ import SwiftUI
 import StrandDesign
 
 struct SkyHeaderStyle {
-    let hasSky: Bool
+    private let requestedSky: Bool
+
+    init(hasSky: Bool) {
+        requestedSky = hasSky
+    }
+
+    var hasSky: Bool { requestedSky && !UrjasAppearance.isRhythm }
 
     var primary: Color { hasSky ? StrandPalette.onDarkPrimary : StrandPalette.textPrimary }
     var secondary: Color { hasSky ? StrandPalette.onDarkSecondary : StrandPalette.textSecondary }
@@ -166,9 +172,10 @@ struct LiquidScaffoldSky: View {
     var height: CGFloat = 240
     @AppStorage(SceneBackgroundPrefs.enabledKey) private var showDayCycleBackground = false
     @AppStorage(SkyBehindCardsPrefs.enabledKey) private var skyBehindCards = true
+    @AppStorage(UrjasAppearance.rhythmKey) private var rhythmEnabled = true
 
     var body: some View {
-        if showDayCycleBackground {
+        if showDayCycleBackground && !(rhythmEnabled && UrjasAppearance.isRhythm) {
             LiquidSkyStatic(hour: nil, settleStrength: skyBehindCards ? 0.78 : 1)
                 .frame(maxWidth: .infinity, maxHeight: skyBehindCards ? .infinity : nil)
                 .frame(height: skyBehindCards ? nil : height, alignment: .top)

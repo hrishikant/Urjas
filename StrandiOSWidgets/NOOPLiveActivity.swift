@@ -28,7 +28,9 @@ struct NOOPLiveActivity: Widget {
                         } else if let r = context.state.recovery {
                             statColumn(label: "Charge", value: "\(r)%")
                         }
-                        if let e = context.state.effort {
+                        if let display = context.state.effortDisplay {
+                            statColumn(label: "Strain", value: display)
+                        } else if let e = context.state.effort {
                             statColumn(label: "Effort", value: "\(e)")
                         }
                     }

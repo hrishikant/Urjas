@@ -64,6 +64,32 @@ are very welcome.
 
 ## Build from source
 
+### Urjas mobile design preview
+
+The native mobile design uses Today, Activity, Sleep, Health and a searchable More.
+The three Today rings are Sleep, Recovery and Strain; Strain is displayed on 0-21
+without changing the stored 0-100 scores. The original More tools and existing
+recording, sleep, provider and personalization workflows remain native.
+
+**Settings > Appearance > New mobile design** returns to the previous interface.
+The `urjas.rhythmDesignEnabled` preference defaults on for iOS only. Previous sky,
+card transparency, Liquid Today, layout and scale preferences are retained; macOS
+and watchOS retain their previous presentation.
+
+The `RhythmUIQA` scheme runs the native XCTest UI walkthrough against a dedicated
+simulator. Its `--demo-seed` argument only seeds an empty DEBUG store. Do not run it
+against a phone with personal data:
+
+```bash
+xcodegen generate
+xcodebuild -project Strand.xcodeproj -scheme RhythmUIQA \
+  -destination 'platform=iOS Simulator,id=YOUR_QA_SIMULATOR_ID' \
+  CODE_SIGNING_ALLOWED=NO test
+```
+
+Simulator coverage does not establish real-band Bluetooth, background execution,
+HealthKit permissions, wrist cues or Lock Screen/Dynamic Island delivery.
+
 Prefer to build it yourself (which also grants HealthKit/widgets under your own Apple ID)? Run
 `xcodegen generate`, then build the **`NOOPiOS`** scheme in Xcode. The reconciliation that brought the
 [PR #42](../../../pull/42) port onto current `main` is summarised in **"Lessons from the fold-in"**

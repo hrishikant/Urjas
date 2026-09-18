@@ -1,5 +1,22 @@
 import SwiftUI
 
+/// Reversible iPhone/iPad presentation; existing appearance and chart preferences are untouched.
+public enum UrjasAppearance {
+    public static let rhythmKey = "urjas.rhythmDesignEnabled"
+
+    public static var isRhythm: Bool {
+        isRhythm(in: .standard)
+    }
+
+    static func isRhythm(in defaults: UserDefaults) -> Bool {
+        #if os(iOS)
+        return defaults.object(forKey: rhythmKey) == nil || defaults.bool(forKey: rhythmKey)
+        #else
+        return false
+        #endif
+    }
+}
+
 /// The data-visualisation colour style: the brand "Titanium & Gold" data ramps, or a "Classic"
 /// throwback — the recognizable red → amber → green readiness scale (cool→hot zones, green→red stress,
 /// purple REM) that health apps have always used. Works in BOTH light and dark. It only re-colours the
@@ -125,7 +142,7 @@ private struct AdditiveBloom: ViewModifier {
     func body(content: Content) -> some View {
         // Dialed back (0.55) — the full-strength additive bloom read as too much glow against the
         // crisper design language. Still present on dark for depth, just restrained.
-        if scheme == .dark { content.blendMode(.plusLighter).opacity(0.55) }
+        if scheme == .dark && !UrjasAppearance.isRhythm { content.blendMode(.plusLighter).opacity(0.55) }
         else { content.opacity(0) }
     }
 }
@@ -138,7 +155,8 @@ private struct NoopElevation: ViewModifier {
     func body(content: Content) -> some View {
         let lightShadow = Color(hex: "#1A2230")
         return content.shadow(
-            color: scheme == .light ? lightShadow.opacity(hovering ? 0.16 : 0.09)
+            color: UrjasAppearance.isRhythm ? .clear
+                   : scheme == .light ? lightShadow.opacity(hovering ? 0.16 : 0.09)
                                     : Color.black.opacity(hovering ? 0.45 : 0.0),
             radius: scheme == .light ? (hovering ? 14 : 10) : (hovering ? 18 : 0),
             x: 0, y: scheme == .light ? (hovering ? 5 : 3) : (hovering ? 8 : 0)

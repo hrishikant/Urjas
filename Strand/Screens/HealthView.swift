@@ -24,8 +24,10 @@ struct HealthView: View {
     // MARK: - Body
 
     var body: some View {
-        ScreenScaffold(title: "Health Monitor",
-                       subtitle: "Live vitals, streamed from the strap.",
+        ScreenScaffold(title: UrjasAppearance.isRhythm ? "Get to know your normal." : "Health Monitor",
+                       subtitle: UrjasAppearance.isRhythm
+                        ? "Health · Less comparison. More context from your own baseline."
+                        : "Live vitals, streamed from the strap.",
                        // PERF (scroll): lazy column — byte-identical layout (LazyVStack == eager VStack
                        // alignment/spacing/header); builds the trailing vitals/skin-temp/age sections on
                        // demand instead of all up-front.
@@ -34,7 +36,9 @@ struct HealthView: View {
                        // The day-of-sky liquid backdrop, matching Today / Sleep / Trends: a fixed,
                        // full-bleed time-of-day sky behind the scroll content (does not scroll).
                        topBackground: liquidScaffoldSky()) {
-            if repo.days.isEmpty {
+            if UrjasAppearance.isRhythm {
+                RhythmHealthSections()
+            } else if repo.days.isEmpty {
                 // First run / no history: whether to show the empty state or the full live stack depends
                 // on whether a strap is streaming live HR — a `live`-dependent choice. It's isolated to
                 // this leaf (which owns `live`/`model`) so a ~1 Hz HR tick re-renders only this branch,
@@ -44,6 +48,58 @@ struct HealthView: View {
                 // History present: `live` is irrelevant to the layout choice, so the parent renders the
                 // full section stack directly without observing the HR stream.
                 HealthSectionsStack()
+            }
+        }
+        .accessibilityIdentifier("rhythm.health.screen")
+    }
+}
+
+private struct RhythmHealthSections: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: NoopMetrics.sectionSpacing) {
+            VitalsSection()
+            RhythmHealthHeadsUp()
+            HeartRateSection()
+            #if os(iOS)
+            VStack(alignment: .leading, spacing: NoopMetrics.gap) {
+                SectionHeader("The rest of your health toolkit")
+                RhythmSurfaceFeatureGrid(features: [.fitnessAge, .vitality, .stress, .breathe, .hrvSnapshot,
+                                                   .rhythm, .hydration, .caffeine, .labBook, .bodyClock,
+                                                   .cycleAwareness, .coupled, .fusedRecord])
+            }
+            #endif
+            RecoveryContributorsSection()
+            Text("Consumer wearable readings are estimates, not a diagnosis or a real-time health assessment. Missing data is not a sign that everything is in range. If you feel unwell, seek appropriate medical advice.")
+                .font(StrandFont.footnote).foregroundStyle(StrandPalette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("rhythm.health.disclaimer")
+        }
+    }
+}
+
+private struct RhythmHealthHeadsUp: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        if let illness = model.illnessSignal, illness.level != .quiet {
+            HeadsUpCard(result: illness, distance: model.illnessDistance)
+        }
+    }
+}
+
+/// Dedicated routes keep the existing readiness, consent and metric workflows intact.
+struct RhythmHealthFeatureView: View {
+    @EnvironmentObject private var repo: Repository
+    let feature: MobileFeature
+
+    var body: some View {
+        ScreenScaffold(title: LocalizedStringKey(feature.title), subtitle: LocalizedStringKey(feature.subtitle),
+                       onRefresh: { await repo.refresh() }, lazy: true) {
+            switch feature {
+            case .fitnessAge: FitnessAgeSection()
+            case .vitality: VitalitySection()
+            case .bodyClock, .cycleAwareness: SkinTempSection(focus: feature)
+            default: HealthHubLinksSection()
             }
         }
     }
@@ -237,6 +293,7 @@ private struct HeartRateSection: View {
     /// carries PPG harmonic spikes (real ~92 read as 170+); AppModel.bpm's doc mandates "every screen
     /// should show THIS". Falls back to the reported value, then R-R-derived, only until the median has a sample.
     private var displayHR: Int? {
+        if UrjasAppearance.isRhythm && !live.connected { return nil }
         if let hr = model.bpm, hr > 0 { return hr }
         if let hr = live.heartRate, hr > 0 { return hr }
         if let last = live.rr.last, last > 0 { return Int((60_000.0 / Double(last)).rounded()) }
@@ -268,6 +325,7 @@ private struct HeartRateSection: View {
     /// timestamps, so we synthesise a 1 Hz trailing window ending "now" — the x-axis still reads as
     /// clock time and scrolls, matching the live buffer's behaviour (#198).
     private func hrSeries(_ hr: Int?) -> [LiveHRSample] {
+        if UrjasAppearance.isRhythm { return live.connected ? hrHistory : [] }
         if hrHistory.count > 1 { return hrHistory }
         let beats = live.rr.suffix(60).compactMap { rr -> Double? in
             rr > 0 ? 60_000.0 / Double(rr) : nil
@@ -303,9 +361,10 @@ private struct HeartRateSection: View {
             // No scenic starfield / bloom: fill contrast carries the edge (Apple-flat).
             ChartCard(
                 title: "Heart Rate",
-                subtitle: hrIsDerived ? String(localized: "Estimated from R-R interval")
+                subtitle: hasLiveHR && hrIsDerived ? String(localized: "Estimated from R-R interval")
                     : (hasLiveHR ? String(localized: "Streaming live") : String(localized: "Awaiting strap")),
                 trailing: hasLiveHR ? "\(displayHR!) bpm" : "—",
+                height: UrjasAppearance.isRhythm ? NoopMetrics.keyMetricTileHeight : NoopMetrics.chartHeight,
                 tint: StrandPalette.metricRose
             ) {
                 heroChart(displayHR: displayHR, hasLiveHR: hasLiveHR,
@@ -318,6 +377,7 @@ private struct HeartRateSection: View {
                     ("State", hasLiveHR ? String(localized: "STREAMING") : String(localized: "IDLE")),
                 ])
             }
+            .accessibilityIdentifier("rhythm.health.liveHeartRate")
         }
         .onReceive(sampleTimer) { now in
             // Bank the CURRENT spike-filtered HR once a second, stamped with the tick's real wall-clock
@@ -328,6 +388,9 @@ private struct HeartRateSection: View {
             guard let v = displayHR, (30...220).contains(v) else { return }
             hrHistory.append(LiveHRSample(date: now, bpm: Double(v)))
             if hrHistory.count > 180 { hrHistory.removeFirst(hrHistory.count - 180) }
+        }
+        .onChange(of: live.connected) { connected in
+            if UrjasAppearance.isRhythm && !connected { hrHistory.removeAll() }
         }
     }
 
@@ -777,10 +840,17 @@ private struct FitnessAgeSection: View {
         return VStack(alignment: .leading, spacing: NoopMetrics.space5) {
             // WHOOP-inspired cosmic orb hero. Tap the orb to open the full "fitness_age" trend.
             Button { fitnessSheet = .trend } label: {
-                FitnessAgeOrb(age: shown, younger: younger,
-                              deltaLine: ageDeltaLine(years: years, younger: younger))
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
+                if UrjasAppearance.isRhythm {
+                    RhythmSurfaceStat(title: String(localized: "Fitness age"),
+                                      value: "\(shown)",
+                                      caption: ageDeltaLine(years: years, younger: younger),
+                                      tint: StrandPalette.rhythmRecovery)
+                } else {
+                    FitnessAgeOrb(age: shown, younger: younger,
+                                  deltaLine: ageDeltaLine(years: years, younger: younger))
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                }
             }
             .buttonStyle(LiquidPressStyle())
             .accessibilityElement(children: .ignore)
@@ -1239,16 +1309,23 @@ private struct VitalitySection: View {
                 // HeroScoreCell idiom). Taps splash the gauge; the number is hit-transparent.
                 VStack(alignment: .leading, spacing: NoopMetrics.space1) {
                     Text("Vitality").strandOverline()
-                    ZStack {
-                        LiquidVessel(value: max(0, min(1, v / 100)), tint: StrandPalette.chargeColor, animated: true)
-                            .frame(width: 108, height: 108)
-                        VStack(spacing: 0) {
-                            CountUpNumber(value: v, font: StrandFont.rounded(38))
-                                .foregroundStyle(.white)
-                                .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
-                            Text("of 100").font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                    Group {
+                        if UrjasAppearance.isRhythm {
+                            RhythmSurfaceStat(title: String(localized: "Weekly estimate"), value: "\(Int(v.rounded()))",
+                                              caption: String(localized: "of 100"), tint: StrandPalette.rhythmRecovery)
+                        } else {
+                            ZStack {
+                                LiquidVessel(value: max(0, min(1, v / 100)), tint: StrandPalette.chargeColor, animated: true)
+                                    .frame(width: 108, height: 108)
+                                VStack(spacing: 0) {
+                                    CountUpNumber(value: v, font: StrandFont.rounded(38))
+                                        .foregroundStyle(.white)
+                                        .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
+                                    Text("of 100").font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                                }
+                                .allowsHitTesting(false)
+                            }
                         }
-                        .allowsHitTesting(false)
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Vitality \(Int(v.rounded())) out of 100")
@@ -1314,6 +1391,7 @@ private struct VitalitySection: View {
 /// not re-rendered by the ~1Hz live HR stream.
 private struct VitalsSection: View {
     @EnvironmentObject var repo: Repository
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     // Temperature display preference (D#103). Skin temp is stored in °C (absolute or a ±deviation); the
     // toggle re-labels it to °F. Display-only — banding still runs on the stored °C value.
@@ -1330,9 +1408,15 @@ private struct VitalsSection: View {
             temperatureUnit: temperatureUnit
         )
         VStack(alignment: .leading, spacing: NoopMetrics.gap) {
-            SectionHeader("Vital Signs", overline: "Latest", trailing: BodyVitalSigns.latestDayLabel(readings))
+            if UrjasAppearance.isRhythm { rhythmBaselineSummary(readings) }
+            SectionHeader(UrjasAppearance.isRhythm ? "Your baseline, in context" : "Vital Signs",
+                          overline: UrjasAppearance.isRhythm ? "Latest recorded" : "Latest",
+                          trailing: BodyVitalSigns.latestDayLabel(readings))
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 168), spacing: NoopMetrics.gap)],
+                columns: UrjasAppearance.isRhythm
+                    ? Array(repeating: GridItem(.flexible(), spacing: NoopMetrics.gap),
+                            count: typeSize.isAccessibilitySize ? 1 : 2)
+                    : [GridItem(.adaptive(minimum: 168), spacing: NoopMetrics.gap)],
                 alignment: .leading,
                 spacing: NoopMetrics.gap
             ) {
@@ -1342,8 +1426,12 @@ private struct VitalsSection: View {
                     // filled to the metric's fraction, with the value counting up beside it and the same
                     // banding caption + sparkline the classic tile carried. Every binding + accessibility
                     // label is preserved — this is the liquid restyle of the flat StatTile.
-                    LiquidVitalTile(reading: v)
-                        .staggeredAppear(index: idx)
+                    if UrjasAppearance.isRhythm {
+                        RhythmHealthVitalTile(reading: v)
+                    } else {
+                        LiquidVitalTile(reading: v)
+                            .staggeredAppear(index: idx)
+                    }
                 }
             }
             Text("Once Ūrjas has 14 nights of history, in-range compares each vital to your own baseline (approximate, not medical advice); until then, typical adult ranges apply.")
@@ -1351,6 +1439,78 @@ private struct VitalsSection: View {
                 .foregroundStyle(StrandPalette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func rhythmBaselineSummary(_ readings: [BodyVitalReading]) -> some View {
+        let measured = readings.filter { $0.value != nil && $0.key != "spo2raw" }
+        let outside = measured.filter { $0.banding.band == .outOfRange }.count
+        let personal = measured.filter { $0.banding.basis == .personal }.count
+        return NoopCard(tint: StrandPalette.rhythmHero) {
+            HStack(alignment: .top, spacing: NoopMetrics.space3) {
+                Image(systemName: "heart.text.square")
+                    .font(StrandFont.title2).foregroundStyle(StrandPalette.rhythmRecovery)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+                    Text(measured.isEmpty ? "Your normal takes time."
+                         : (outside == 0 ? "Your available readings are in range."
+                            : "\(outside) readings sit outside their comparison range."))
+                        .font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
+                    Text(measured.isEmpty
+                         ? "Wear your band overnight or import your history. Your tools below are ready when you are."
+                         : "\(measured.count) available readings · \(personal) compared with your personal baseline. Other readings use typical adult ranges; dates and sources are shown on each card.")
+                        .font(StrandFont.body).foregroundStyle(StrandPalette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Not a real-time health assessment.")
+                        .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                }
+            }
+        }
+        .accessibilityIdentifier("rhythm.health.baseline")
+    }
+}
+
+private struct RhythmHealthVitalTile: View {
+    let reading: BodyVitalReading
+
+    private var route: TabRoute {
+        guard let metric = RhythmVitalRoute.metric(key: reading.key, source: reading.source) else {
+            return .metricExplorer
+        }
+        return .metricDetail(metric)
+    }
+
+    var body: some View {
+        NavigationLink(value: route) {
+            NoopCard {
+                VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+                    HStack(alignment: .top, spacing: NoopMetrics.space2) {
+                        Text(reading.label).font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(StrandFont.caption)
+                            .foregroundStyle(StrandPalette.textTertiary).accessibilityHidden(true)
+                    }
+                    Text(reading.formattedValue ?? "—")
+                        .font(StrandFont.number(NoopMetrics.space8))
+                        .foregroundStyle(reading.accent)
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                    if let values = reading.sparkline, values.count > 1 {
+                        Sparkline(values: values,
+                                  gradient: Gradient(colors: [reading.metricColor.opacity(0.4), reading.metricColor]))
+                            .frame(height: NoopMetrics.space10)
+                            .accessibilityHidden(true)
+                    }
+                    Text(reading.stateCaption)
+                        .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, minHeight: NoopMetrics.tileHeight, alignment: .topLeading)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(reading.accessibilityText)
+        .accessibilityHint("Opens the recorded trend and source details")
+        .accessibilityIdentifier("rhythm.health.metric.\(reading.key)")
     }
 }
 
@@ -1437,6 +1597,7 @@ private struct LiquidVitalTile: View {
 private struct SkinTempSection: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var repo: Repository
+    var focus: MobileFeature? = nil
 
     /// The cycle-awareness opt-in (default OFF). The same key AppModel reads, so a flip is consistent.
     @AppStorage(AppModel.cycleAwarenessKey) private var cycleEnabled = false
@@ -1448,16 +1609,21 @@ private struct SkinTempSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: NoopMetrics.gap) {
-            SectionHeader("Skin temperature", overline: "From your nightly sensor")
+            SectionHeader(focus == .bodyClock ? "Body clock" : (focus == .cycleAwareness ? "Cycle awareness" : "Skin temperature"),
+                          overline: "From your nightly sensor")
 
             // 1. Illness heads-up — only when the engine returned something worth surfacing.
-            if let illness = model.illnessSignal, illness.level != .quiet {
+            if focus == nil, let illness = model.illnessSignal, illness.level != .quiet {
                 HeadsUpCard(result: illness, distance: model.illnessDistance)
             }
 
             // 2. Body clock — shows nil-state copy via the engine's own confidence handling.
-            if let phase = model.circadianPhase {
+            if focus != .cycleAwareness, let phase = model.circadianPhase {
                 BodyClockCard(estimate: phase)
+            }
+            if focus == .bodyClock && model.circadianPhase == nil {
+                ComingSoon(what: "Your body clock needs enough nightly skin-temperature data to read a rhythm. No phase is estimated here without it.",
+                           symbol: "sun.max")
             }
 
             // 3. Cycle awareness: opt-in, and gated on profile sex (#801). Cycle phase is derived
@@ -1465,28 +1631,35 @@ private struct SkinTempSection: View {
             // apply to (female / nonbinary); it is NOT rendered for male profiles. If a profile that
             // previously enabled it later switches to male, we still honour the existing awareness card
             // rather than silently hiding their data; only the OPT-IN invitation is gated.
-            if cycleEnabled, let cycle = model.cyclePhase {
-                CycleAwarenessCard(result: cycle, curve: model.cycleCurve,
-                                   // Symmetric off (#801): turn it off in-place, here in Health, where
-                                   // it was turned on, not only from Automations.
-                                   onTurnOff: {
-                                       cycleEnabled = false
-                                       model.cycleAwarenessEnabled = false
-                                       Task { await model.refreshV5Signals() }
-                                   })
-            } else if !cycleEnabled && cycleOptInApplies {
-                CycleAwarenessOptInCard(onEnable: {
-                    cycleEnabled = true
-                    model.cycleAwarenessEnabled = true
-                    Task { await model.refreshV5Signals() }
-                })
+            if focus != .bodyClock {
+                if cycleEnabled, let cycle = model.cyclePhase {
+                    CycleAwarenessCard(result: cycle, curve: model.cycleCurve,
+                                       // Symmetric off (#801): turn it off in-place, here in Health, where
+                                       // it was turned on, not only from Automations.
+                                       onTurnOff: {
+                                           cycleEnabled = false
+                                           model.cycleAwarenessEnabled = false
+                                           Task { await model.refreshV5Signals() }
+                                       })
+                } else if !cycleEnabled && cycleOptInApplies {
+                    CycleAwarenessOptInCard(onEnable: {
+                        cycleEnabled = true
+                        model.cycleAwarenessEnabled = true
+                        Task { await model.refreshV5Signals() }
+                    })
+                } else if focus == .cycleAwareness {
+                    ComingSoon(what: cycleEnabled
+                        ? "Cycle awareness is on. More nightly data is needed before a phase can be estimated."
+                        : "Cycle awareness is not offered for this profile. It uses menstrual skin-temperature shifts, not a general-purpose cycle score.",
+                        symbol: "moon")
+                }
             }
 
             // Honest empty state when the suite has nothing to show yet. The opt-in card normally fills
             // the section when cycle is OFF, but it is gated off for male profiles (#801), so the
             // section can also be blank when the opt-in doesn't apply AND nothing else has data. Show
             // the empty state in either case (cycle ON but thin, OR opt-in hidden with no other signal).
-            if (cycleEnabled || !cycleOptInApplies)
+            if focus == nil && (cycleEnabled || !cycleOptInApplies)
                 && model.illnessSignal == nil && model.circadianPhase == nil && model.cyclePhase == nil {
                 ComingSoon(what: "Wear the strap overnight and these read from your nightly skin temperature.",
                            symbol: "thermometer.medium")
